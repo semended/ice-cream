@@ -16,7 +16,7 @@ MVP-контур для быстрой оценки VLM-моделей на за
 ## Данные
 
 - `data/real_images/`: реальные полевые фото (target images) `photo_001.jpg ...`
-- `data/ground_truth/manual_ground_truth.csv`: ручная разметка (countable поля)
+- `data/ground_truth/kik_report_ground_truth.csv`: ручная разметка (MVP CSV)
 - `data/raw/fair_prices.pdf`: продуктовая линейка с визуальными примерами (для reference images)
 
 ## Структура
@@ -30,7 +30,8 @@ ice-cream-vlm-mvp/
     reference_images/
     reference_candidates/
     ground_truth/
-      manual_ground_truth.csv
+      kik_report_ground_truth.csv
+      kik_report_ground_truth_template.csv
       manual_ground_truth.jsonl
   results/
   src/
@@ -77,8 +78,9 @@ python3 src/compare_with_ground_truth.py
   - сохраняет `data/reference_candidates/contact_sheet.jpg` для быстрой визуальной проверки.
 
 - `src/generate_ground_truth_jsonl.py`:
-  - читает `data/ground_truth/manual_ground_truth.csv`;
+  - читает `data/ground_truth/kik_report_ground_truth.csv` (поддерживает неполный набор колонок);
   - приводит значения к countable JSON-схеме (boolean/int/null);
+  - автозаполняет часть бинарных полей из `expected_violations`, если явное поле не задано;
   - сохраняет `data/ground_truth/manual_ground_truth.jsonl` (1 строка = 1 image_id).
 
 - `src/run_openrouter_eval.py`:
@@ -91,10 +93,12 @@ python3 src/compare_with_ground_truth.py
 
 - `src/compare_with_ground_truth.py`:
   - мержит предсказания с ground truth по `image_id`;
-  - игнорирует поля, где ground truth = null/unknown;
+  - игнорирует поля, где ground truth = null;
   - считает MAE/RMSE (numeric) и accuracy/precision/recall/F1 (boolean);
+  - считает coverage по каждому полю и модели;
   - сохраняет:
     - `results/model_comparison_details.csv`
     - `results/model_comparison_summary.csv`
     - `results/boolean_metrics_by_model.csv`
     - `results/numeric_metrics_by_model.csv`
+    - `results/field_coverage_by_model.csv`

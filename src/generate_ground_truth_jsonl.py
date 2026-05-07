@@ -145,11 +145,28 @@ def map_photo_crop_flags(photo_crop_quality: Any) -> tuple[bool | None, bool | N
 
 def to_uncertainty_notes(row: dict[str, Any]) -> list[str]:
     notes: list[str] = []
-    for key in ("violations", "notes", "visible_sku"):
+    for key in ("expected_violations", "comment", "violations", "notes", "visible_sku"):
         s = _norm_str(row.get(key))
         if s and s.lower() not in ("unknown", "null", "none", "nan", "-"):
             notes.append(f"{key}: {s}")
     return notes
+
+
+def parse_expected_violations(raw: Any) -> set[str]:
+    s = _norm_str(raw).lower()
+    if not s:
+        return set()
+    return {x.strip() for x in s.split(";") if x.strip()}
+
+
+def explicit_or_violation(explicit: bool | None, violations: set[str], positive_token: str | None, negative_token: str | None) -> bool | None:
+    if explicit is not None:
+        return explicit
+    if positive_token and positive_token in violations:
+        return True
+    if negative_token and negative_token in violations:
+        return False
+    return None
 
 
 def row_to_countable_dict(row: dict[str, Any]) -> dict[str, Any]:
@@ -162,7 +179,11 @@ def row_to_countable_dict(row: dict[str, Any]) -> dict[str, Any]:
     out["is_ice_cream_equipment"] = parse_bool(row.get("is_ice_cream_equipment"))
 
     out.update(map_equipment_flags(row.get("equipment_type")))
-    out["equipment_is_branded"] = parse_bool(row.get("branded_equipment"))
+    # support both old and new column names
+    explicit_is_branded = parse_bool(row.get("equipment_is_branded"))
+    if explicit_is_branded is None:
+        explicit_is_branded = parse_bool(row.get("branded_equipment"))
+    out["equipment_is_branded"] = explicit_is_branded
 
     out["photo_quality_score"] = map_photo_quality_score(row.get("photo_quality"))
     crop_full, crop_partial = map_photo_crop_flags(row.get("photo_crop_quality"))
@@ -170,7 +191,14 @@ def row_to_countable_dict(row: dict[str, Any]) -> dict[str, Any]:
     out["photo_crop_is_partial"] = crop_partial
     out["analysis_possible_score"] = map_analysis_possible_score(row.get("analysis_possible"))
 
-    out["kik_present"] = parse_bool(row.get("kik_present"))
+    violations = parse_expected_violations(row.get("expected_violations"))
+
+    out["kik_present"] = explicit_or_violation(
+        parse_bool(row.get("kik_present")),
+        violations,
+        positive_token=None,
+        negative_token="kik_absent",
+    )
     out["kik_sku_count"] = parse_int(row.get("kik_sku_count"))
     out["kik_share_percent"] = parse_int(row.get("kik_share_percent"))
     out["fill_level_percent"] = parse_int(row.get("fill_level_percent"))
@@ -185,14 +213,45 @@ def row_to_countable_dict(row: dict[str, Any]) -> dict[str, Any]:
         "has_poleno",
         "has_briquette",
         "has_large_pack",
-        "has_posm",
-        "has_monobrand_block",
-        "has_foreign_label",
-        "has_non_icecream_products",
-        "has_empty_sections",
-        "is_kik_mixed_with_competitors",
     ]:
         out[f] = parse_bool(row.get(f))
+
+    out["has_posm"] = explicit_or_violation(
+        parse_bool(row.get("has_posm")),
+        violations,
+        positive_token=None,
+        negative_token="posm_absent",
+    )
+    out["has_monobrand_block"] = explicit_or_violation(
+        parse_bool(row.get("has_monobrand_block")),
+        violations,
+        positive_token=None,
+        negative_token="no_monobrand_block",
+    )
+    out["has_foreign_label"] = explicit_or_violation(
+        parse_bool(row.get("has_foreign_label")),
+        violations,
+        positive_token="foreign_label_visible",
+        negative_token=None,
+    )
+    out["has_non_icecream_products"] = explicit_or_violation(
+        parse_bool(row.get("has_non_icecream_products")),
+        violations,
+        positive_token="non_icecream_products_visible",
+        negative_token=None,
+    )
+    out["has_empty_sections"] = explicit_or_violation(
+        parse_bool(row.get("has_empty_sections")),
+        violations,
+        positive_token="empty_section_visible",
+        negative_token=None,
+    )
+    out["is_kik_mixed_with_competitors"] = explicit_or_violation(
+        parse_bool(row.get("is_kik_mixed_with_competitors")),
+        violations,
+        positive_token="kik_mixed_with_competitors",
+        negative_token=None,
+    )
 
     out["status_score"] = map_status_score(row.get("status"))
     out["confidence_score"] = map_confidence_score(row.get("confidence"))
@@ -212,17 +271,31 @@ def main() -> None:
     required_min = ["image_id"]
     missing = [c for c in required_min if c not in df.columns]
     if missing:
-        raise ValueError("manual_ground_truth.csv missing required columns: " + ", ".join(missing))
+        raise ValueError("kik_report_ground_truth.csv missing required columns: " + ", ".join(missing))
 
     OUTPUT_JSONL.parent.mkdir(parents=True, exist_ok=True)
+    output_rows: list[dict[str, Any]] = []
     written = 0
     with OUTPUT_JSONL.open("w", encoding="utf-8") as f:
         for _, r in df.iterrows():
             obj = row_to_countable_dict(r.to_dict())
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+            output_rows.append(obj)
             written += 1
 
-    print(f"Saved: {OUTPUT_JSONL.as_posix()} ({written} rows)")
+    out_df = pd.DataFrame(output_rows)
+    print(f"Input CSV: {GROUND_TRUTH_CSV.as_posix()}")
+    print(f"Processed rows: {written}")
+    print(f"Saved JSONL: {OUTPUT_JSONL.as_posix()}")
+    print("Non-null values by field:")
+    for field in OUTPUT_FIELDS:
+        if field == "image_id":
+            non_null = int(out_df[field].astype(str).str.strip().ne("").sum())
+        elif field == "uncertainty_notes":
+            non_null = int(out_df[field].map(lambda x: isinstance(x, list) and len(x) > 0).sum())
+        else:
+            non_null = int(out_df[field].notna().sum())
+        print(f"  - {field}: {non_null}")
 
 
 if __name__ == "__main__":

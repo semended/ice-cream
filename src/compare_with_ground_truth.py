@@ -9,6 +9,7 @@ DETAILS_CSV = Path("results/model_comparison_details.csv")
 SUMMARY_CSV = Path("results/model_comparison_summary.csv")
 BOOLEAN_BY_MODEL_CSV = Path("results/boolean_metrics_by_model.csv")
 NUMERIC_BY_MODEL_CSV = Path("results/numeric_metrics_by_model.csv")
+FIELD_COVERAGE_BY_MODEL_CSV = Path("results/field_coverage_by_model.csv")
 
 
 NUMERIC_FIELDS = [
@@ -211,6 +212,7 @@ def main() -> None:
     summary_rows = []
     boolean_rows: list[dict[str, object]] = []
     numeric_rows: list[dict[str, object]] = []
+    coverage_rows: list[dict[str, object]] = []
     for model, group in merged.groupby("model", dropna=False):
         errors_count = int((group["error"].astype(str).str.strip() != "").sum())
         avg_latency = float(group["latency_sec"].mean()) if group["latency_sec"].notna().any() else float("nan")
@@ -227,13 +229,29 @@ def main() -> None:
                 mae = safe_mae(group[f"{f}_gt"], group[f"{f}_pred"])
                 rmse = safe_rmse(group[f"{f}_gt"], group[f"{f}_pred"])
                 row[f"mae_{f}"] = round(mae, 3)
+                gt_non_null = int(group[f"{f}_gt"].notna().sum())
+                pred_non_null = int(group[f"{f}_pred"].notna().sum())
+                pred_non_null_on_gt = int((group[f"{f}_gt"].notna() & group[f"{f}_pred"].notna()).sum())
+                missing_pred_on_gt = int((group[f"{f}_gt"].notna() & group[f"{f}_pred"].isna()).sum())
                 numeric_rows.append(
                     {
                         "model": model,
                         "field": f,
                         "mae": round(mae, 4),
                         "rmse": round(rmse, 4),
-                        "n": int(group[f"{f}_gt"].notna().sum()),
+                        "n": gt_non_null,
+                    }
+                )
+                coverage_rows.append(
+                    {
+                        "model": model,
+                        "field": f,
+                        "field_type": "numeric",
+                        "gt_non_null": gt_non_null,
+                        "pred_non_null_total": pred_non_null,
+                        "pred_non_null_on_gt": pred_non_null_on_gt,
+                        "missing_pred_when_gt_known": missing_pred_on_gt,
+                        "coverage_on_gt": round(pred_non_null_on_gt / gt_non_null, 4) if gt_non_null > 0 else float("nan"),
                     }
                 )
 
@@ -242,6 +260,22 @@ def main() -> None:
                 continue
             m = boolean_metrics(group[f"{f}_gt"], group[f"{f}_pred"])
             boolean_rows.append({"model": model, "field": f, **m})
+            gt_non_null = int(group[f"{f}_gt"].notna().sum())
+            pred_non_null = int(group[f"{f}_pred"].notna().sum())
+            pred_non_null_on_gt = int((group[f"{f}_gt"].notna() & group[f"{f}_pred"].notna()).sum())
+            missing_pred_on_gt = int((group[f"{f}_gt"].notna() & group[f"{f}_pred"].isna()).sum())
+            coverage_rows.append(
+                {
+                    "model": model,
+                    "field": f,
+                    "field_type": "boolean",
+                    "gt_non_null": gt_non_null,
+                    "pred_non_null_total": pred_non_null,
+                    "pred_non_null_on_gt": pred_non_null_on_gt,
+                    "missing_pred_when_gt_known": missing_pred_on_gt,
+                    "coverage_on_gt": round(pred_non_null_on_gt / gt_non_null, 4) if gt_non_null > 0 else float("nan"),
+                }
+            )
 
         summary_rows.append(row)
 
@@ -254,11 +288,14 @@ def main() -> None:
     boolean_df.to_csv(BOOLEAN_BY_MODEL_CSV, index=False, encoding="utf-8-sig")
     numeric_df = pd.DataFrame(numeric_rows)
     numeric_df.to_csv(NUMERIC_BY_MODEL_CSV, index=False, encoding="utf-8-sig")
+    coverage_df = pd.DataFrame(coverage_rows)
+    coverage_df.to_csv(FIELD_COVERAGE_BY_MODEL_CSV, index=False, encoding="utf-8-sig")
 
     print(f"Saved details: {DETAILS_CSV.as_posix()}")
     print(f"Saved summary: {SUMMARY_CSV.as_posix()}")
     print(f"Saved boolean metrics: {BOOLEAN_BY_MODEL_CSV.as_posix()}")
     print(f"Saved numeric metrics: {NUMERIC_BY_MODEL_CSV.as_posix()}")
+    print(f"Saved field coverage: {FIELD_COVERAGE_BY_MODEL_CSV.as_posix()}")
 
 
 if __name__ == "__main__":
