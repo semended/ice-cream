@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Generated outputs
+results/*.csv
+data/reference_candidates/
+data/reference_images/
+
+# Local/large input data (keep placeholders only)
+data/raw/
+data/real_images/
+data/ground_truth/manual_ground_truth.csv
+data/ground_truth/manual_ground_truth.jsonl

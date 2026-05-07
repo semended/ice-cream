@@ -1,0 +1,10 @@
+image_id,equipment_type,kik_present,kik_sku_count,kik_share_percent,fill_level_percent,status,expected_violations,comment
+point_01.jpg,2 открытых ларя,true,10,58,80,attention,"no_monobrand_block;foreign_label_visible;posm_absent","КИК перемешан с конкурентами, бирка МОЛОКО, ведерки и полено скрыты"
+point_02.jpg,1 вертикальный мультитемп ларь,false,0,0,50,critical,"kik_absent;foreign_label_visible;non_icecream_products_visible","КИК отсутствует, ларь занят конкурентами и выпечкой"
+point_03.jpg,Фирменный открытый ларь Ренна,true,8,90,92,normal,"foreign_label_visible;posm_absent","Бирка МОЛОКО, нет POSM, не представлены ведерки и полено"
+point_04.jpg,3-секционный витринный ларь,true,3,25,30,critical,"low_kik_share;low_fill_level;empty_section_visible;foreign_label_visible","Верхняя секция пустая, низкая заполненность"
+point_05.jpg,Фирменный вертикальный холодильник Ренна,true,5,95,85,normal,"foreign_label_visible","Бирка МОЛОКО, нижняя полка не заполнена"
+point_06.jpg,2 открытых ларя,false,0,0,62,critical,"kik_absent;foreign_label_visible","КИК отсутствует, ларь заполнен конкурентами"
+point_07.jpg,1 вертикальный холодильник,true,4,42,70,attention,"kik_mixed_with_competitors;no_monobrand_block;foreign_label_visible;non_icecream_products_visible","КИК перемешан с конкурентами, нижняя полка занята овощами"
+point_08.jpg,1 открытый двухсекционный ларь,true,4,45,82,attention,"kik_mixed_with_competitors;foreign_label_visible;posm_absent","Бирка КОЛБАСА, КИК перемешан с конкурентами, нет POSM"
+point_09.jpg,2 вертикальных секции,true,3,28,42,critical,"low_kik_share;low_fill_level;foreign_label_visible;empty_section_visible","Бирка КОЛБАСА, низкая заполненность, нижняя секция почти пустая"
