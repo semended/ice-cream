@@ -69,6 +69,13 @@ python3 src/run_openrouter_eval.py
 python3 src/compare_with_ground_truth.py
 ```
 
+Безопасный малый прогон перед полным запуском:
+
+```bash
+OPENROUTER_MODELS="google/gemini-2.5-flash" MAX_IMAGES=2 python3 src/run_openrouter_eval.py
+python3 src/compare_with_ground_truth.py
+```
+
 ## Что делает каждый скрипт
 
 - `src/extract_reference_images_from_pdf.py`:
@@ -85,9 +92,12 @@ python3 src/compare_with_ground_truth.py
 
 - `src/run_openrouter_eval.py`:
   - читает target images из `data/real_images/`;
+  - если есть `data/ground_truth/manual_ground_truth.jsonl`, прогоняет только изображения, чьи имена есть в ground truth;
+  - поддерживает `MAX_IMAGES=N` для малого прогона после ground truth-фильтрации;
+  - поддерживает `OPENROUTER_MODELS="model_a,model_b"` для выбора моделей через env;
   - читает reference images из `data/reference_images/`;
   - отправляет в каждый запрос: prompt + reference images (с подписями) + target image;
-  - прогоняет список моделей `MODELS`;
+  - прогоняет список моделей `MODELS` или список из `OPENROUTER_MODELS`;
   - просит JSON строго по JSON Schema (response_format json_schema);
   - сохраняет ответы/ошибки в `results/openrouter_eval_results.csv` (включая `prediction_json`).
 
