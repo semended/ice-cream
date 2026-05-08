@@ -1,3 +1,4 @@
+from math import ceil
 from pathlib import Path
 
 import pandas as pd
@@ -20,6 +21,7 @@ NUMERIC_FIELDS = [
     "kik_sku_count",
     "kik_share_percent",
     "fill_level_percent",
+    "kik_outside_block_severity",
     "status_score",
     "confidence_score",
 ]
@@ -44,7 +46,8 @@ BOOLEAN_FIELDS = [
     "has_briquette",
     "has_large_pack",
     "has_posm",
-    "has_monobrand_block",
+    "has_kik_grouped_block",
+    "has_kik_products_outside_block",
     "has_foreign_label",
     "has_non_icecream_products",
     "has_empty_sections",
@@ -57,6 +60,7 @@ NORMALIZERS = {
     "kik_sku_count": 15,
     "kik_share_percent": 100,
     "fill_level_percent": 100,
+    "kik_outside_block_severity": 3,
     "status_score": 2,
     "confidence_score": 2,
 }
@@ -74,12 +78,32 @@ BUSINESS_KEY_FIELDS = [
     "has_bucket",
     "has_poleno",
     "has_posm",
-    "has_monobrand_block",
+    "has_kik_grouped_block",
+    "has_kik_products_outside_block",
+    "kik_outside_block_severity",
     "has_foreign_label",
     "has_non_icecream_products",
     "has_empty_sections",
     "is_kik_mixed_with_competitors",
     "status_score",
+]
+
+CATEGORY_FIELDS = [
+    "has_cup",
+    "has_cone",
+    "has_eskimo",
+    "has_lakomka",
+    "has_sandwich",
+    "has_large_pack",
+    "has_bucket",
+    "has_poleno",
+    "has_briquette",
+]
+
+LAYOUT_BOOLEAN_FIELDS = [
+    "has_kik_grouped_block",
+    "has_kik_products_outside_block",
+    "is_kik_mixed_with_competitors",
 ]
 
 
@@ -123,6 +147,18 @@ def parse_int_series(series: pd.Series) -> pd.Series:
             return None
 
     return series.map(_parse)
+
+
+def ensure_current_schema_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if "has_kik_grouped_block" not in df.columns and "has_monobrand_block" in df.columns:
+        df["has_kik_grouped_block"] = df["has_monobrand_block"]
+    if "has_monobrand_block" in df.columns:
+        df = df.drop(columns=["has_monobrand_block"])
+    if "has_kik_products_outside_block" not in df.columns:
+        df["has_kik_products_outside_block"] = None
+    if "kik_outside_block_severity" not in df.columns:
+        df["kik_outside_block_severity"] = None
+    return df
 
 
 def safe_mae(series_true: pd.Series, series_pred: pd.Series) -> float:
@@ -217,6 +253,198 @@ def round_or_nan(value: float, digits: int = 4) -> float:
     return round(float(value), digits) if pd.notna(value) else float("nan")
 
 
+def ratio(num: int | float, den: int | float) -> float:
+    if den == 0:
+        return float("nan")
+    return float(num / den)
+
+
+def presence_metrics(y_true: pd.Series, y_pred: pd.Series) -> dict[str, float | int]:
+    yt = y_true.dropna()
+    yp = y_pred.loc[yt.index]
+    tp = int(((yt == True) & (yp == True)).sum())  # noqa: E712
+    fp = int(((yt == False) & (yp == True)).sum())  # noqa: E712
+    tn = int(((yt == False) & (yp == False)).sum())  # noqa: E712
+    fn = int(((yt == True) & (yp != True)).sum())  # noqa: E712
+    tpr = ratio(tp, tp + fn)
+    tnr = ratio(tn, tn + fp)
+    precision = ratio(tp, tp + fp)
+    recall = tpr
+    f1 = float("nan")
+    if pd.notna(precision) and pd.notna(recall) and precision + recall > 0:
+        f1 = 2 * precision * recall / (precision + recall)
+    return {
+        "presence_tp": tp,
+        "presence_fp": fp,
+        "presence_tn": tn,
+        "presence_fn": fn,
+        "s_present": finite_mean([tpr, tnr]),
+        "kik_present_precision": precision,
+        "kik_present_recall": recall,
+        "kik_present_f1": f1,
+        "kik_present_false_negative_rate": ratio(fn, tp + fn),
+        "kik_present_false_positive_rate": ratio(fp, tn + fp),
+        "cer_fn": ratio(fn, tp + fn),
+        "cer_fp": ratio(fp, tn + fp),
+        "CER_FN": ratio(fn, tp + fn),
+        "CER_FP": ratio(fp, tn + fp),
+    }
+
+
+def positive_group(group: pd.DataFrame) -> pd.DataFrame:
+    if "kik_present_gt" not in group.columns:
+        return group.iloc[0:0]
+    return group[group["kik_present_gt"] == True]  # noqa: E712
+
+
+def share_metrics(group: pd.DataFrame) -> dict[str, float]:
+    pos = positive_group(group)
+    if pos.empty:
+        return {
+            "s_share": float("nan"),
+            "kik_share_mae_pp": float("nan"),
+            "kik_share_hit_5pp": float("nan"),
+            "kik_share_hit_10pp": float("nan"),
+            "kik_share_cer_20pp": float("nan"),
+            "cer_share20": float("nan"),
+            "CER_share20": float("nan"),
+        }
+    scores: list[float] = []
+    errors: list[float] = []
+    hit5 = 0
+    hit10 = 0
+    cer20 = 0
+    for _, row in pos.iterrows():
+        gate = 1 if row.get("kik_present_pred") is True else 0
+        gt = row.get("kik_share_percent_gt")
+        pred = row.get("kik_share_percent_pred")
+        if gate == 0 or pd.isna(gt) or pd.isna(pred):
+            scores.append(0.0)
+            cer20 += 1
+            continue
+        err = abs(float(gt) - float(pred))
+        errors.append(err)
+        scores.append(gate * max(0.0, 1.0 - err / 20.0))
+        hit5 += int(err <= 5)
+        hit10 += int(err <= 10)
+        cer20 += int(err > 20)
+    return {
+        "s_share": finite_mean(scores),
+        "kik_share_mae_pp": finite_mean(errors),
+        "kik_share_hit_5pp": ratio(hit5, len(pos)),
+        "kik_share_hit_10pp": ratio(hit10, len(pos)),
+        "kik_share_cer_20pp": ratio(cer20, len(pos)),
+        "cer_share20": ratio(cer20, len(pos)),
+        "CER_share20": ratio(cer20, len(pos)),
+    }
+
+
+def sku_metrics(group: pd.DataFrame) -> dict[str, float]:
+    pos = positive_group(group)
+    if pos.empty:
+        return {
+            "s_sku": float("nan"),
+            "kik_sku_mae": float("nan"),
+            "kik_sku_exact_match_rate": float("nan"),
+            "kik_sku_within_1_rate": float("nan"),
+            "kik_sku_large_error_rate": float("nan"),
+            "cer_sku": float("nan"),
+            "CER_sku": float("nan"),
+        }
+    scores: list[float] = []
+    errors: list[float] = []
+    exact = 0
+    within1 = 0
+    large = 0
+    for _, row in pos.iterrows():
+        gate = 1 if row.get("kik_present_pred") is True else 0
+        gt = row.get("kik_sku_count_gt")
+        pred = row.get("kik_sku_count_pred")
+        if gate == 0 or pd.isna(gt) or pd.isna(pred):
+            scores.append(0.0)
+            large += 1
+            continue
+        gt_i = int(gt)
+        err = abs(gt_i - int(pred))
+        errors.append(float(err))
+        scores.append(gate * max(0.0, 1.0 - err / max(3, gt_i)))
+        exact += int(err == 0)
+        within1 += int(err <= 1)
+        large += int(err > max(2, ceil(gt_i / 2)))
+    return {
+        "s_sku": finite_mean(scores),
+        "kik_sku_mae": finite_mean(errors),
+        "kik_sku_exact_match_rate": ratio(exact, len(pos)),
+        "kik_sku_within_1_rate": ratio(within1, len(pos)),
+        "kik_sku_large_error_rate": ratio(large, len(pos)),
+        "cer_sku": ratio(large, len(pos)),
+        "CER_sku": ratio(large, len(pos)),
+    }
+
+
+def category_metrics(group: pd.DataFrame) -> tuple[dict[str, float], list[dict[str, object]]]:
+    pos = positive_group(group)
+    rows: list[dict[str, object]] = []
+    precisions: list[float] = []
+    recalls: list[float] = []
+    f1s: list[float] = []
+    for field in CATEGORY_FIELDS:
+        gt_col = f"{field}_gt"
+        pred_col = f"{field}_pred"
+        if gt_col not in pos.columns or pred_col not in pos.columns:
+            continue
+        m = boolean_metrics(pos[gt_col], pos[pred_col])
+        rows.append({"field": field, **m})
+        if int(m["n"]) > 0:
+            if pd.notna(m["precision"]):
+                precisions.append(float(m["precision"]))
+            if pd.notna(m["recall"]):
+                recalls.append(float(m["recall"]))
+            if pd.notna(m["f1"]):
+                f1s.append(float(m["f1"]))
+    metrics = {
+        "s_cat": finite_mean(f1s),
+        "category_macro_f1": finite_mean(f1s),
+        "category_macro_precision": finite_mean(precisions),
+        "category_macro_recall": finite_mean(recalls),
+    }
+    return metrics, rows
+
+
+def layout_metrics(group: pd.DataFrame) -> dict[str, float]:
+    pos = positive_group(group)
+    f1s: list[float] = []
+    out: dict[str, float] = {}
+    for field in LAYOUT_BOOLEAN_FIELDS:
+        gt_col = f"{field}_gt"
+        pred_col = f"{field}_pred"
+        if gt_col not in pos.columns or pred_col not in pos.columns:
+            out[f"f1_{field}"] = float("nan")
+            continue
+        m = boolean_metrics(pos[gt_col], pos[pred_col])
+        out[f"f1_{field}"] = float(m["f1"]) if pd.notna(m["f1"]) else float("nan")
+        if pd.notna(m["f1"]):
+            f1s.append(float(m["f1"]))
+
+    severity_scores: list[float] = []
+    for _, row in pos.iterrows():
+        gate = 1 if row.get("kik_present_pred") is True else 0
+        gt = row.get("kik_outside_block_severity_gt")
+        pred = row.get("kik_outside_block_severity_pred")
+        if gate == 0 or pd.isna(gt) or pd.isna(pred):
+            severity_scores.append(0.0)
+        else:
+            severity_scores.append(max(0.0, 1.0 - abs(float(gt) - float(pred)) / 3.0))
+    out["severity_score_avg"] = finite_mean(severity_scores)
+    out["s_layout"] = finite_mean([*f1s, out["severity_score_avg"]])
+    return out
+
+
+def json_valid_rate(group: pd.DataFrame) -> float:
+    valid = (group["error"].astype(str).str.strip() == "") & group["prediction_json"].astype(str).str.strip().ne("")
+    return float(valid.mean()) if len(group) else float("nan")
+
+
 def coverage_metrics(group: pd.DataFrame, field: str, field_type: str) -> dict[str, object]:
     gt_col = f"{field}_gt"
     pred_col = f"{field}_pred"
@@ -297,6 +525,7 @@ def load_ground_truth() -> pd.DataFrame:
     if not GROUND_TRUTH_JSONL.exists():
         raise FileNotFoundError(f"Ground truth JSONL not found: {GROUND_TRUTH_JSONL.as_posix()}")
     gt = pd.read_json(GROUND_TRUTH_JSONL, lines=True)
+    gt = ensure_current_schema_columns(gt)
 
     gt["image_id"] = gt["image_id"].astype(str)
 
@@ -316,6 +545,7 @@ def main() -> None:
 
     gt = load_ground_truth()
     pred = pd.read_csv(PREDICTIONS_CSV, keep_default_na=False)
+    pred = ensure_current_schema_columns(pred)
 
     gt["image_id"] = gt["image_id"].astype(str)
     pred["image_id"] = pred["image_id"].astype(str)
@@ -355,6 +585,9 @@ def main() -> None:
             "total_cases": int(len(group)),
             "api_or_json_errors": errors_count,
             "avg_latency_sec": round(avg_latency, 3) if avg_latency == avg_latency else float("nan"),
+            "p95_latency_sec": round(float(group["latency_sec"].quantile(0.95)), 3)
+            if group["latency_sec"].notna().any()
+            else float("nan"),
         }
 
         for f in NUMERIC_FIELDS:
@@ -414,25 +647,38 @@ def main() -> None:
                     }
                 )
 
-        boolean_macro_accuracy = finite_mean(boolean_accuracies)
-        numeric_macro_mae = finite_mean(numeric_maes)
-        normalized_mae = finite_mean(normalized_maes)
-        numeric_score = clamp01(1.0 - normalized_mae)
-        coverage_score = (
-            coverage_both_non_null / coverage_gt_non_null if coverage_gt_non_null > 0 else float("nan")
-        )
-        mvp_parts = [boolean_macro_accuracy, numeric_score, coverage_score]
-        if all(pd.notna(part) for part in mvp_parts):
-            mvp_score = 0.45 * boolean_macro_accuracy + 0.35 * numeric_score + 0.20 * coverage_score
+        presence = presence_metrics(group["kik_present_gt"], group["kik_present_pred"])
+        share = share_metrics(group)
+        sku = sku_metrics(group)
+        cat, _category_rows = category_metrics(group)
+        layout = layout_metrics(group)
+        coverage_score = coverage_both_non_null / coverage_gt_non_null if coverage_gt_non_null > 0 else float("nan")
+        base_parts = [presence["s_present"], share["s_share"], sku["s_sku"], cat["s_cat"], layout["s_layout"]]
+        if all(pd.notna(part) for part in base_parts):
+            base_score = (
+                0.35 * float(presence["s_present"])
+                + 0.30 * float(share["s_share"])
+                + 0.20 * float(sku["s_sku"])
+                + 0.10 * float(cat["s_cat"])
+                + 0.05 * float(layout["s_layout"])
+            )
+            final_score_100 = 100 * base_score
         else:
-            mvp_score = float("nan")
+            final_score_100 = float("nan")
 
-        row["boolean_macro_accuracy"] = round_or_nan(boolean_macro_accuracy)
-        row["numeric_macro_mae"] = round_or_nan(numeric_macro_mae)
-        row["normalized_numeric_mae"] = round_or_nan(normalized_mae)
-        row["numeric_score"] = round_or_nan(numeric_score)
-        row["coverage_score"] = round_or_nan(coverage_score)
-        row["mvp_score"] = round_or_nan(mvp_score)
+        row.update({k: round_or_nan(v) if isinstance(v, float) else v for k, v in presence.items()})
+        row.update({k: round_or_nan(v) for k, v in share.items()})
+        row.update({k: round_or_nan(v) for k, v in sku.items()})
+        row.update({k: round_or_nan(v) for k, v in cat.items()})
+        row.update({k: round_or_nan(v) for k, v in layout.items()})
+        row["final_score_100"] = round_or_nan(final_score_100, 2)
+        row["json_valid_rate"] = round_or_nan(json_valid_rate(group))
+        row["field_coverage"] = round_or_nan(coverage_score)
+        # Legacy names kept as aliases for older report selection code.
+        row["boolean_macro_accuracy"] = row["s_present"]
+        row["numeric_score"] = finite_mean([share["s_share"], sku["s_sku"]])
+        row["coverage_score"] = row["field_coverage"]
+        row["mvp_score"] = row["final_score_100"]
 
         for _, case_row in group.iterrows():
             worst_case_rows.append(worst_case_row(case_row))
@@ -440,6 +686,51 @@ def main() -> None:
         summary_rows.append(row)
 
     summary_df = pd.DataFrame(summary_rows)
+    preferred_summary_columns = [
+        "model",
+        "total_cases",
+        "final_score_100",
+        "s_present",
+        "s_share",
+        "s_sku",
+        "s_cat",
+        "s_layout",
+        "presence_tp",
+        "presence_fp",
+        "presence_tn",
+        "presence_fn",
+        "kik_present_precision",
+        "kik_present_recall",
+        "kik_present_f1",
+        "kik_present_false_negative_rate",
+        "kik_present_false_positive_rate",
+        "CER_FN",
+        "CER_FP",
+        "kik_share_mae_pp",
+        "kik_share_hit_5pp",
+        "kik_share_hit_10pp",
+        "kik_share_cer_20pp",
+        "CER_share20",
+        "kik_sku_mae",
+        "kik_sku_exact_match_rate",
+        "kik_sku_within_1_rate",
+        "kik_sku_large_error_rate",
+        "CER_sku",
+        "category_macro_f1",
+        "category_macro_precision",
+        "category_macro_recall",
+        "f1_has_kik_grouped_block",
+        "f1_has_kik_products_outside_block",
+        "f1_is_kik_mixed_with_competitors",
+        "severity_score_avg",
+        "json_valid_rate",
+        "field_coverage",
+        "avg_latency_sec",
+        "p95_latency_sec",
+    ]
+    ordered_columns = [c for c in preferred_summary_columns if c in summary_df.columns]
+    ordered_columns.extend([c for c in summary_df.columns if c not in ordered_columns])
+    summary_df = summary_df[ordered_columns]
 
     SUMMARY_CSV.parent.mkdir(parents=True, exist_ok=True)
     summary_df.to_csv(SUMMARY_CSV, index=False, encoding="utf-8-sig")

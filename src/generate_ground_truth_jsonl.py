@@ -31,7 +31,8 @@ BOOLEAN_FIELDS = [
     "has_briquette",
     "has_large_pack",
     "has_posm",
-    "has_monobrand_block",
+    "has_kik_grouped_block",
+    "has_kik_products_outside_block",
     "has_foreign_label",
     "has_non_icecream_products",
     "has_empty_sections",
@@ -44,6 +45,7 @@ NUMERIC_FIELDS = [
     "kik_sku_count",
     "kik_share_percent",
     "fill_level_percent",
+    "kik_outside_block_severity",
     "status_score",
     "confidence_score",
 ]
@@ -80,6 +82,13 @@ def parse_int(x: Any) -> int | None:
         # handles "10.0" from CSV as well
         val = int(float(s))
     except Exception:  # noqa: BLE001
+        return None
+    return val
+
+
+def parse_severity(x: Any) -> int | None:
+    val = parse_int(x)
+    if val is None or val < 0 or val > 3:
         return None
     return val
 
@@ -222,8 +231,11 @@ def row_to_countable_dict(row: dict[str, Any]) -> dict[str, Any]:
         positive_token=None,
         negative_token="posm_absent",
     )
-    out["has_monobrand_block"] = explicit_or_violation(
-        parse_bool(row.get("has_monobrand_block")),
+    grouped_block = parse_bool(row.get("has_kik_grouped_block"))
+    if grouped_block is None:
+        grouped_block = parse_bool(row.get("has_monobrand_block"))
+    out["has_kik_grouped_block"] = explicit_or_violation(
+        grouped_block,
         violations,
         positive_token=None,
         negative_token="no_monobrand_block",
@@ -246,12 +258,26 @@ def row_to_countable_dict(row: dict[str, Any]) -> dict[str, Any]:
         positive_token="empty_section_visible",
         negative_token=None,
     )
-    out["is_kik_mixed_with_competitors"] = explicit_or_violation(
+    is_mixed = explicit_or_violation(
         parse_bool(row.get("is_kik_mixed_with_competitors")),
         violations,
         positive_token="kik_mixed_with_competitors",
         negative_token=None,
     )
+    out["is_kik_mixed_with_competitors"] = is_mixed
+
+    outside_block = parse_bool(row.get("has_kik_products_outside_block"))
+    if outside_block is None:
+        outside_block = is_mixed
+    out["has_kik_products_outside_block"] = outside_block
+
+    severity = parse_severity(row.get("kik_outside_block_severity"))
+    if severity is None:
+        if outside_block is True:
+            severity = 3 if is_mixed is True else 1
+        elif outside_block is False:
+            severity = 0
+    out["kik_outside_block_severity"] = severity
 
     out["status_score"] = map_status_score(row.get("status"))
     out["confidence_score"] = map_confidence_score(row.get("confidence"))
@@ -300,4 +326,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

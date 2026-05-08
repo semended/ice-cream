@@ -34,11 +34,13 @@ PREDICTION_FIELDS = [
     "has_briquette",
     "has_large_pack",
     "has_posm",
-    "has_monobrand_block",
+    "has_kik_grouped_block",
+    "has_kik_products_outside_block",
     "has_foreign_label",
     "has_non_icecream_products",
     "has_empty_sections",
     "is_kik_mixed_with_competitors",
+    "kik_outside_block_severity",
     "status_score",
     "confidence_score",
     "uncertainty_notes",
@@ -66,6 +68,8 @@ def main() -> None:
                 raise ValueError("Ground truth row is missing image_id")
 
             prediction = {field: ground_truth.get(field) for field in PREDICTION_FIELDS}
+            if prediction.get("has_kik_grouped_block") is None:
+                prediction["has_kik_grouped_block"] = ground_truth.get("has_monobrand_block")
             row = {
                 "model": MODEL_NAME,
                 "image_id": image_id,

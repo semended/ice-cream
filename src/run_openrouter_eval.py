@@ -50,15 +50,58 @@ PREDICTION_FIELDS = [
     "has_briquette",
     "has_large_pack",
     "has_posm",
-    "has_monobrand_block",
+    "has_kik_grouped_block",
+    "has_kik_products_outside_block",
     "has_foreign_label",
     "has_non_icecream_products",
     "has_empty_sections",
     "is_kik_mixed_with_competitors",
+    "kik_outside_block_severity",
     "status_score",
     "confidence_score",
     "uncertainty_notes",
 ]
+
+BOOLEAN_FIELDS = [
+    "is_trade_equipment_photo",
+    "is_ice_cream_equipment",
+    "equipment_is_open_freezer",
+    "equipment_is_vertical_fridge",
+    "equipment_is_display_freezer",
+    "equipment_is_branded",
+    "photo_crop_is_full",
+    "photo_crop_is_partial",
+    "kik_present",
+    "has_cup",
+    "has_eskimo",
+    "has_lakomka",
+    "has_cone",
+    "has_sandwich",
+    "has_bucket",
+    "has_poleno",
+    "has_briquette",
+    "has_large_pack",
+    "has_posm",
+    "has_kik_grouped_block",
+    "has_kik_products_outside_block",
+    "has_foreign_label",
+    "has_non_icecream_products",
+    "has_empty_sections",
+    "is_kik_mixed_with_competitors",
+]
+
+NUMERIC_FIELDS = [
+    "photo_quality_score",
+    "analysis_possible_score",
+    "kik_sku_count",
+    "kik_share_percent",
+    "fill_level_percent",
+    "kik_outside_block_severity",
+    "status_score",
+    "confidence_score",
+]
+
+RESPONSE_FORMAT_MODES = {"json_schema", "json_object", "none"}
 
 PROMPT = """Role:
 Ты выполняешь аудит полевого фото торгового оборудования с мороженым для контроля мерчандайзинга бренда "Коровка из Кореновки" / "КИК" / "Ренна".
@@ -90,6 +133,55 @@ Decision rules:
 - Если КИК отсутствует, категории КИК должны быть false или null в зависимости от видимости.
 - Если фото не про торговое оборудование: is_trade_equipment_photo=false, analysis_possible_score=0, confidence_score=0, status_score=2, остальные поля null где нельзя определить.
 - Если фото про оборудование, но не про мороженое: is_trade_equipment_photo=true, is_ice_cream_equipment=false, analysis_possible_score=0 или 1, status_score=2.
+- If photo is not analyzable, use null for visual business fields and explain why in uncertainty_notes.
+
+Consistency rules:
+- If kik_present=true, then kik_sku_count must be greater than 0 and kik_share_percent must be greater than 0.
+- If kik_sku_count=0 and kik_share_percent=0, then kik_present must be false.
+- If uncertainty_notes says that KIK is not found, then kik_present must be false.
+- If kik_present=false, all KIK category fields should be false or null.
+- Do not return contradictory JSON.
+
+KIK recognition rules:
+- Treat products as KIK/Renna/Коровка из Кореновки only if packaging visually matches the provided reference images or visible brand elements.
+- Do not require perfect logo readability: packaging color/design/category similarity can be enough if it matches references.
+- Use reference images as visual examples of the product family and categories.
+- Do not confuse competitor products with KIK.
+
+Share/count rules:
+- kik_sku_count is approximate number of distinct visible KIK SKU, not facings/packages.
+- If several packages of same design are visible, count them as 1 SKU.
+- kik_share_percent is approximate visual share of KIK among all visible products inside the equipment.
+- Use coarse 10% steps: 0, 10, 20, ..., 100.
+- Do not use exact-looking arbitrary percentages.
+
+KIK block / mixed placement rules:
+- Important business rule: a grouped KIK block means KIK products are placed together in a visually compact area of the freezer.
+- Do not mark the layout as correct only because a grouped KIK block exists.
+- Also check whether any KIK products are placed outside the main KIK block among competitor products.
+- has_kik_grouped_block=true if there is a compact KIK area.
+- has_kik_products_outside_block=true if one or more KIK products are visible outside that compact area among non-KIK products.
+- kik_outside_block_severity:
+  0 = no KIK products outside the block.
+  1 = 1-2 isolated KIK products outside the block.
+  2 = several KIK products outside the block.
+  3 = KIK products are strongly mixed with competitors and the grouped block is broken or unclear.
+- is_kik_mixed_with_competitors=true if KIK products are mixed with competitor products or placed outside the main grouped block in a way that violates clean block placement.
+- If has_kik_grouped_block=true and has_kik_products_outside_block=false, usually is_kik_mixed_with_competitors should be false.
+- If KIK is visibly mixed with competitors, has_kik_grouped_block should usually be false or has_kik_products_outside_block should be true.
+- Do not mark has_kik_grouped_block=true just because KIK is present.
+
+Status rules:
+- status_score=0 normal only if KIK share is high, photo is analyzable, no major merchandising issues are visible.
+- status_score=1 attention if KIK is present but there are issues: low/medium share, missing POSM, no grouped KIK block, KIK products outside the block, mixed with competitors, low fill, missing key categories.
+- status_score=2 critical if KIK is absent, share is very low, photo is unusable, or severe issues are visible.
+- Do not put status_score=0 when there is no POSM, no grouped KIK block, KIK products outside the block, mixed competitors, or low/medium share.
+
+Fill level rules:
+- fill_level_percent is total equipment fill, not KIK fill.
+- Estimate empty visible space in the equipment.
+- Use coarse 10% steps.
+- Do not overestimate fill level if large empty zones/low stacks are visible.
 
 Field definitions:
 - is_trade_equipment_photo: true если на target image видно торговое оборудование: ларь, морозильник, холодильник, витрина, полка.
@@ -116,11 +208,13 @@ Field definitions:
 - has_briquette: видны брикеты КИК.
 - has_large_pack: видны большие упаковки/пакеты КИК.
 - has_posm: true если видны фирменные POSM, фирменные ценники, брендированные материалы, воблеры или явные брендированные ценники КИК/Ренна.
-- has_monobrand_block: true если продукция КИК визуально собрана в отдельный блок, а не хаотично разбросана среди конкурентов.
+- has_kik_grouped_block: true если продукция КИК визуально собрана в отдельный чистый блок.
+- has_kik_products_outside_block: true если один или несколько продуктов КИК находятся вне основного блока среди конкурентов.
+- kik_outside_block_severity: 0 no outside products, 1 one-two isolated products, 2 several outside products, 3 strongly mixed / block broken or unclear.
 - has_foreign_label: true если видна чужая бирка/ценник/табличка, не соответствующая мороженому или КИК, например "МОЛОКО", "КОЛБАСА".
 - has_non_icecream_products: true если в/на оборудовании видны не мороженые продукты: выпечка, молоко, овощи, полуфабрикаты и т.п.
 - has_empty_sections: true если заметны пустые секции/корзины/полки оборудования.
-- is_kik_mixed_with_competitors: true если продукция КИК перемешана с конкурентами, а не собрана блоком.
+- is_kik_mixed_with_competitors: true если продукция КИК перемешана с конкурентами или размещена вне основного блока так, что нарушает чистую блочную выкладку.
 - status_score: 0 normal, 1 attention, 2 critical.
 - confidence_score: 2 high, 1 medium, 0 low.
 - uncertainty_notes: короткий список причин неуверенности или важных видимых ограничений: блики, обрезка, плохой угол, мелкие упаковки, закрытые ценники, спорная категория.
@@ -134,7 +228,8 @@ Business status rules:
 - confidence_score=0 low: плохое фото / сильные блики / обрезка / мало уверенности.
 
 Output discipline:
-Верни только JSON. Все поля из JSON_SCHEMA обязательны. additionalProperties=false.
+Перед финальным JSON внутренне проверь consistency rules, but output only JSON.
+Верни только JSON. Все поля из JSON_SCHEMA обязательны. additionalProperties=false. Do not output deprecated fields such as has_monobrand_block.
 """
 
 JSON_SCHEMA: dict[str, Any] = {
@@ -167,11 +262,13 @@ JSON_SCHEMA: dict[str, Any] = {
             "has_briquette": {"type": ["boolean", "null"]},
             "has_large_pack": {"type": ["boolean", "null"]},
             "has_posm": {"type": ["boolean", "null"]},
-            "has_monobrand_block": {"type": ["boolean", "null"]},
+            "has_kik_grouped_block": {"type": ["boolean", "null"]},
+            "has_kik_products_outside_block": {"type": ["boolean", "null"]},
             "has_foreign_label": {"type": ["boolean", "null"]},
             "has_non_icecream_products": {"type": ["boolean", "null"]},
             "has_empty_sections": {"type": ["boolean", "null"]},
             "is_kik_mixed_with_competitors": {"type": ["boolean", "null"]},
+            "kik_outside_block_severity": {"type": ["integer", "null"], "enum": [0, 1, 2, 3, None]},
             "status_score": {"type": ["integer", "null"], "enum": [0, 1, 2, None]},
             "confidence_score": {"type": ["integer", "null"], "enum": [0, 1, 2, None]},
             "uncertainty_notes": {"type": "array", "items": {"type": "string"}},
@@ -204,6 +301,93 @@ def extract_json_from_response(response_json: dict[str, Any]) -> dict[str, Any]:
     if "{" in text and "}" in text:
         text = text[text.find("{") : text.rfind("}") + 1]
     return json.loads(text)
+
+
+def parse_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in ("", "unknown", "null", "none", "nan", "-"):
+        return None
+    if text in ("true", "1", "yes", "y", "да", "истина"):
+        return True
+    if text in ("false", "0", "no", "n", "нет", "ложь"):
+        return False
+    return None
+
+
+def parse_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip().lower()
+    if text in ("", "unknown", "null", "none", "nan", "-"):
+        return None
+    try:
+        return int(float(text))
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_severity(value: Any) -> int | None:
+    parsed = parse_int(value)
+    if parsed is None or parsed < 0 or parsed > 3:
+        return None
+    return parsed
+
+
+def normalize_prediction(output: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(output, dict):
+        raise ValueError("Parsed prediction JSON must be an object")
+
+    normalized: dict[str, Any] = {}
+    for field in PREDICTION_FIELDS:
+        value = output.get(field)
+        if field == "has_kik_grouped_block" and value is None:
+            value = output.get("has_monobrand_block")
+        if field in BOOLEAN_FIELDS:
+            normalized[field] = parse_bool(value)
+        elif field == "kik_outside_block_severity":
+            normalized[field] = parse_severity(value)
+        elif field in NUMERIC_FIELDS:
+            normalized[field] = parse_int(value)
+        elif field == "uncertainty_notes":
+            if isinstance(value, list):
+                normalized[field] = [str(item) for item in value if item is not None]
+            elif value in (None, ""):
+                normalized[field] = []
+            else:
+                normalized[field] = [str(value)]
+        else:
+            normalized[field] = value
+    return normalized
+
+
+def response_format_mode_for_model(model: str) -> str:
+    explicit_mode = os.getenv("RESPONSE_FORMAT_MODE", "").strip().lower()
+    if explicit_mode:
+        if explicit_mode not in RESPONSE_FORMAT_MODES:
+            modes = ", ".join(sorted(RESPONSE_FORMAT_MODES))
+            raise ValueError(f"RESPONSE_FORMAT_MODE must be one of: {modes}")
+        return explicit_mode
+
+    if model.lower().startswith("google/gemini-"):
+        return "none"
+    return "json_schema"
+
+
+def response_format_for_mode(mode: str) -> dict[str, Any] | None:
+    if mode == "json_schema":
+        return {
+            "type": "json_schema",
+            "json_schema": JSON_SCHEMA,
+        }
+    if mode == "json_object":
+        return {"type": "json_object"}
+    if mode == "none":
+        return None
+    raise ValueError(f"Unsupported response_format mode: {mode}")
 
 
 def _reference_items() -> list[tuple[str, Path]]:
@@ -295,6 +479,7 @@ def call_model(
     model: str,
     target_image_path: Path,
     reference_items: list[tuple[str, Path]],
+    response_format_mode: str,
 ) -> tuple[dict[str, Any] | None, str | None, float]:
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -310,7 +495,7 @@ def call_model(
     content.append({"type": "text", "text": "TARGET IMAGE TO ANALYZE"})
     content.append({"type": "image_url", "image_url": {"url": image_to_data_url(target_image_path)}})
 
-    payload = {
+    payload: dict[str, Any] = {
         "model": model,
         "messages": [
             {
@@ -318,11 +503,10 @@ def call_model(
                 "content": content,
             }
         ],
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": JSON_SCHEMA,
-        },
     }
+    response_format = response_format_for_mode(response_format_mode)
+    if response_format is not None:
+        payload["response_format"] = response_format
 
     last_err: str | None = None
     started = time.time()
@@ -344,7 +528,7 @@ def call_model(
                 return None, f"HTTP {response.status_code}: {response.text[:1000]}", latency_sec
 
             parsed = response.json()
-            model_output = extract_json_from_response(parsed)
+            model_output = normalize_prediction(extract_json_from_response(parsed))
             latency_sec = time.time() - started
             return model_output, None, latency_sec
         except (ConnectionResetError, req_exc.Timeout, req_exc.ConnectionError) as exc:
@@ -385,8 +569,17 @@ def main() -> None:
     total = len(selected_models) * len(image_paths)
     with tqdm(total=total, desc="Running VLM eval") as pbar:
         for model in selected_models:
+            response_format_mode = response_format_mode_for_model(model)
+            print(f"Model: {model}")
+            print(f"Selected response_format_mode: {response_format_mode}")
             for image_path in image_paths:
-                output, error, latency_sec = call_model(api_key, model, image_path, reference_items)
+                output, error, latency_sec = call_model(
+                    api_key,
+                    model,
+                    image_path,
+                    reference_items,
+                    response_format_mode,
+                )
 
                 row = {
                     "model": model,
