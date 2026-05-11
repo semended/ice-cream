@@ -1,127 +1,152 @@
 # Ice Cream VLM MVP
 
-MVP-контур для быстрой оценки VLM-моделей на задаче аудита полевых фото торгового оборудования с мороженым (бренд КИК/Ренна).
+KIK-only VLM benchmark for auditing retail ice-cream equipment photos.
 
-## Цель
+The project compares vision-language models on business fields for «Коровка из Кореновки» / КИК:
 
-Проект помогает сравнить VLM-кандидатов по качеству извлечения признаков из фото:
-- тип оборудования;
-- присутствие КИК;
-- оценка SKU КИК;
-- оценка доли КИК;
-- оценка заполненности;
-- видимые нарушения;
-- рекомендованный статус точки.
+- KIK presence;
+- visible KIK SKU count;
+- KIK share percent;
+- retail/ice-cream equipment check and full-crop flag;
+- SKU families;
+- POSM and monobrand block;
+- mixed competitor placement;
+- non-ice-cream products, empty sections, foreign labels;
+- final status: normal / attention / critical.
 
-## Данные
-
-- `data/real_images/`: реальные полевые фото (target images) `photo_001.jpg ...`
-- `data/ground_truth/kik_report_ground_truth.csv`: ручная разметка (MVP CSV)
-- `data/raw/fair_prices.pdf`: продуктовая линейка с визуальными примерами (для reference images)
-
-## Структура
+## Current Structure
 
 ```text
-ice-cream-vlm-mvp/
-  data/
-    raw/
-      fair_prices.pdf
-    real_images/
-    reference_images/
-    reference_candidates/
-    ground_truth/
-      kik_report_ground_truth.csv
-      kik_report_ground_truth_template.csv
-      manual_ground_truth.jsonl
-  results/
-  src/
-    extract_reference_images_from_pdf.py
-    generate_ground_truth_jsonl.py
-    run_openrouter_eval.py
-    compare_with_ground_truth.py
-  .env.example
-  requirements.txt
-  README.md
+data/
+  real_images/                 target JPG photos
+  reference_images_slides/     selected KIK visual references
+  reference_candidates/        backup source crops/candidates for references
+  ground_truth/
+    kik_report_ground_truth.csv
+    kik_report_ground_truth_template.csv
+    manual_ground_truth.jsonl
+  raw/                         source PDFs
+
+vlm_eval/
+  run.py                       KIK benchmark runner
+  models.yaml                  model config
+  tasks/kik/                   KIK prompt, schema, scoring, reporting
+
+src/
+  generate_kik_executive_report.py
+
+runs/
+  kik_eval_7x10_merged/        kept benchmark run and HTML report
 ```
 
-## Подготовка
-
-1. Положите PDF в `data/raw/fair_prices.pdf`.
-2. Создайте `.env` на основе примера:
+## Setup
 
 ```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
 cp .env.example .env
 ```
 
-3. Вставьте в `.env` ваш ключ OpenRouter:
+Put API keys in `.env`:
 
 ```env
 OPENROUTER_API_KEY=...
+DEEPINFRA_API_KEY=...
 ```
 
-## Запуск
+## Smoke Test
+
+No API calls:
 
 ```bash
-pip install -r requirements.txt
-python3 src/generate_ground_truth_jsonl.py
-rm -f results/openrouter_eval_results.csv
-python3 src/run_openrouter_eval.py
-python3 src/compare_with_ground_truth.py
+python -m vlm_eval.run \
+  --models mock \
+  --limit 2 \
+  --output runs/kik_eval
 ```
 
-Безопасный малый прогон перед полным запуском:
+## Run Benchmark
+
+Production candidates:
 
 ```bash
-OPENROUTER_MODELS="google/gemini-2.5-flash" MAX_IMAGES=2 python3 src/run_openrouter_eval.py
-python3 src/compare_with_ground_truth.py
+python -m vlm_eval.run \
+  --images data/real_images \
+  --references data/reference_images_slides \
+  --models qwen3_vl_30b,qwen25_vl_72b,gemma4_31b,glm_46v,mistral_small_4 \
+  --concurrency 3 \
+  --output runs/kik_eval
 ```
 
-Для Gemini через OpenRouter лучше начинать с `RESPONSE_FORMAT_MODE=json_object`; strict `json_schema` у Gemini может падать на стороне провайдера.
+Full 7-model benchmark with heavy quality ceilings:
 
 ```bash
-RESPONSE_FORMAT_MODE=json_object OPENROUTER_MODELS="google/gemini-2.5-flash" MAX_IMAGES=2 python3 src/run_openrouter_eval.py
+python -m vlm_eval.run \
+  --images data/real_images \
+  --references data/reference_images_slides \
+  --models qwen3_vl_235b,mistral_large_3,qwen3_vl_30b,qwen25_vl_72b,gemma4_31b,glm_46v,mistral_small_4 \
+  --include-heavy \
+  --concurrency 3 \
+  --output runs/kik_eval
 ```
 
-Если `json_object` недоступен у провайдера, можно явно отключить `response_format` и положиться на prompt + JSON-парсер:
+The runner loads only `.jpg` / `.jpeg` target images.
+
+## Outputs
+
+Each run creates:
+
+```text
+runs/kik_eval/<timestamp>/
+  results.jsonl
+  errors.jsonl
+  summary.csv
+  summary.md
+  boolean_metrics_by_model.csv
+  numeric_metrics_by_model.csv
+  business_key_metrics_by_model.csv
+  field_coverage_by_model.csv
+  worst_cases_by_model.csv
+  confusion_status_score.csv
+  config_snapshot.yaml
+```
+
+Generate the readable executive HTML report:
 
 ```bash
-RESPONSE_FORMAT_MODE=none OPENROUTER_MODELS="google/gemini-2.5-flash" MAX_IMAGES=2 python3 src/run_openrouter_eval.py
+python src/generate_kik_executive_report.py \
+  --run-dir runs/kik_eval/<timestamp> \
+  --images-dir data/real_images
 ```
 
-## Что делает каждый скрипт
+The current kept report is:
 
-- `src/extract_reference_images_from_pdf.py`:
-  - извлекает embedded images из `data/raw/fair_prices.pdf` в `data/reference_candidates/embedded/`;
-  - сохраняет `data/reference_candidates/reference_candidates_manifest.csv` (path/page/width/height/area);
-  - рендерит страницы PDF и делает грубые crop-reference sheets по категориям в `data/reference_images/`;
-  - сохраняет `data/reference_candidates/contact_sheet.jpg` для быстрой визуальной проверки.
+```text
+runs/kik_eval_7x10_merged/20260510_142125/kik_executive_model_report.html
+```
 
-- `src/generate_ground_truth_jsonl.py`:
-  - читает `data/ground_truth/kik_report_ground_truth.csv` (поддерживает неполный набор колонок);
-  - приводит значения к countable JSON-схеме (boolean/int/null);
-  - автозаполняет часть бинарных полей из `expected_violations`, если явное поле не задано;
-  - сохраняет `data/ground_truth/manual_ground_truth.jsonl` (1 строка = 1 image_id).
+## Tests
 
-- `src/run_openrouter_eval.py`:
-  - читает target images из `data/real_images/`;
-  - если есть `data/ground_truth/manual_ground_truth.jsonl`, прогоняет только изображения, чьи имена есть в ground truth;
-  - поддерживает `MAX_IMAGES=N` для малого прогона после ground truth-фильтрации;
-  - поддерживает `OPENROUTER_MODELS="model_a,model_b"` для выбора моделей через env;
-  - поддерживает `RESPONSE_FORMAT_MODE=json_schema|json_object|none`, для `google/gemini-*` по умолчанию использует `none`;
-  - читает reference images из `data/reference_images/`;
-  - отправляет в каждый запрос: prompt + reference images (с подписями) + target image;
-  - прогоняет список моделей `MODELS` или список из `OPENROUTER_MODELS`;
-  - просит JSON через выбранный `response_format` и нормализует ответ к countable-схеме;
-  - сохраняет ответы/ошибки в `results/openrouter_eval_results.csv` (включая `prediction_json`).
+```bash
+python3 -m unittest discover -s tests -v
+```
 
-- `src/compare_with_ground_truth.py`:
-  - мержит предсказания с ground truth по `image_id`;
-  - игнорирует поля, где ground truth = null;
-  - считает MAE/RMSE (numeric) и accuracy/precision/recall/F1 (boolean);
-  - считает coverage по каждому полю и модели;
-  - сохраняет:
-    - `results/model_comparison_details.csv`
-    - `results/model_comparison_summary.csv`
-    - `results/boolean_metrics_by_model.csv`
-    - `results/numeric_metrics_by_model.csv`
-    - `results/field_coverage_by_model.csv`
+## Codex App
+
+Project-scoped Codex App profiles live in `.codex/config.toml`, with usage notes in `.codex/README.md`.
+
+Default profile: `power`.
+
+Trust the nested repo root first if Codex reports that the profile is not found.
+
+```bash
+codex --cd /Users/semengolodnuk/Documents/ice_cream/ice-cream-vlm-mvp --profile power
+codex --cd /Users/semengolodnuk/Documents/ice_cream/ice-cream-vlm-mvp --profile daily
+```
+
+## Notes
+
+`data/reference_images_slides/` contains the active reference set. The runner sends references in the canonical REF_01..REF_07 order unless `--no-references` is passed.
+
+The intended canonical KIK prompt/image-map contract is recorded in `docs/kik-canonical-prompt-contract.md`. The active runtime currently uses a simplified flat schema in `vlm_eval/tasks/kik/schema.py`; it keeps only business-visible KIK fields and maps brick/log into `has_poleno_or_briquette`.

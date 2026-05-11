@@ -2,15 +2,23 @@
 .env
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# Generated outputs
-results/*.csv
-data/reference_candidates/
-data/reference_images/
+# Generated benchmark outputs
+results/
+runs/
 
-# Local/large input data (keep placeholders only)
+# Local/large input data
+data/debug_images/
+data/extracted_images/
 data/raw/
 data/real_images/
-data/ground_truth/manual_ground_truth.csv
+data/reference_candidates/
+data/reference_images/
 data/ground_truth/manual_ground_truth.jsonl

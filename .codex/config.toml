@@ -1,0 +1,62 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+profile = "power"
+default_permissions = "workspace"
+
+[apps._default]
+destructive_enabled = false
+open_world_enabled = false
+
+[profiles.daily]
+web_search = "cached"
+model_verbosity = "medium"
+model_reasoning_summary = "concise"
+service_tier = "fast"
+model_instructions_file = "../AGENTS.md"
+tools_view_image = true
+default_permissions = "workspace"
+review_model = "gpt-5.5"
+
+[profiles.daily.tools.web_search]
+context_size = "medium"
+
+[profiles.daily.agents]
+max_threads = 6
+max_depth = 1
+job_max_runtime_seconds = 1200
+
+[profiles.daily.features]
+codex_hooks = false
+
+[profiles.power]
+web_search = "live" # Fresh web search for research-heavy VLM work.
+model_verbosity = "high"
+model_reasoning_summary = "detailed" # More visible progress summaries during long tasks.
+service_tier = "fast"
+model_instructions_file = "../AGENTS.md"
+tools_view_image = true
+default_permissions = "power"
+review_model = "gpt-5.5"
+
+[profiles.power.tools.web_search]
+context_size = "high" # More context from web-search results.
+
+[profiles.power.agents]
+max_threads = 12 # Power mode: more parallel subagents.
+max_depth = 3 # Allows nested task decomposition.
+job_max_runtime_seconds = 3600
+
+[profiles.power.features]
+codex_hooks = true # Experimental lifecycle hooks.
+
+[permissions.safe.filesystem]
+glob_scan_max_depth = 8
+":project_roots" = { "." = "read", ".env" = "none", ".env.*" = "none", "**/.env" = "none", "**/.env.*" = "none" }
+
+[permissions.workspace.filesystem]
+glob_scan_max_depth = 8
+":project_roots" = { "." = "write", ".env" = "none", ".env.*" = "none", "**/.env" = "none", "**/.env.*" = "none" }
+
+[permissions.power.filesystem]
+glob_scan_max_depth = 8
+":project_roots" = { "." = "write", ".env" = "none", ".env.*" = "none", "**/.env" = "none", "**/.env.*" = "none" }
