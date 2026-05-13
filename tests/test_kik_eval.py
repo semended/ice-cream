@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from vlm_eval.config import ModelConfig
-from vlm_eval.providers import MockProvider, OpenAICompatibleProvider
+from vlm_eval.providers import GoogleAIStudioProvider, MockProvider, OpenAICompatibleProvider
 from vlm_eval.run import find_reference_images, get_task_spec, run_one
 from vlm_eval.tasks.kik.data import (
     generate_kik_jsonl_from_csv,
@@ -25,6 +25,21 @@ from vlm_eval.tasks.kik.scoring import (
     score_kik_fields,
     score_kik_value,
     status_metrics,
+)
+from vlm_eval.tasks.kik_simple.data import (
+    load_kik_simple_cases,
+    load_kik_simple_labels,
+    resolve_kik_simple_labels_path,
+)
+from vlm_eval.tasks.kik_simple.schema import (
+    KIK_SIMPLE_REQUIRED_FIELDS,
+    make_mock_kik_simple_prediction,
+    validate_kik_simple_prediction,
+)
+from vlm_eval.tasks.kik_simple.scoring import (
+    aggregate_kik_simple_by_model,
+    business_scores as simple_business_scores,
+    score_kik_simple_fields,
 )
 
 
@@ -86,6 +101,67 @@ class KikEvalTests(unittest.TestCase):
         result = validate_kik_prediction(broken)
         self.assertFalse(result.ok)
 
+    def test_kik_simple_schema_validation_has_no_sku_family_fields(self) -> None:
+        prediction = make_mock_kik_simple_prediction()
+        result = validate_kik_simple_prediction(prediction)
+        self.assertTrue(result.ok, result.errors)
+
+        broken = dict(prediction)
+        broken["has_cup"] = True
+        result = validate_kik_simple_prediction(broken)
+        self.assertFalse(result.ok)
+
+        for removed_field in ["photo_crop_is_full", "has_foreign_label", "has_posm", "has_empty_sections"]:
+            self.assertNotIn(removed_field, prediction)
+            broken = dict(prediction)
+            broken[removed_field] = True
+            result = validate_kik_simple_prediction(broken)
+            self.assertFalse(result.ok)
+
+    def test_kik_simple_ground_truth_reuses_old_labels_without_sku_family_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "manual_ground_truth.jsonl"
+            path.write_text(
+                json.dumps(
+                    {
+                        "image_id": "photo_001.jpg",
+                        "kik_present": True,
+                        "has_cup": True,
+                        "has_eskimo": True,
+                        "has_kik_grouped_block": True,
+                        "kik_sku_count": 3,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            labels = load_kik_simple_labels(path)
+
+            self.assertEqual(set(labels["photo_001.jpg"]), set(KIK_SIMPLE_REQUIRED_FIELDS))
+            self.assertNotIn("has_cup", labels["photo_001.jpg"])
+            self.assertTrue(labels["photo_001.jpg"]["has_monobrand_block"])
+            self.assertEqual(labels["photo_001.jpg"]["kik_sku_count"], 3)
+
+    def test_kik_simple_generation_does_not_overwrite_default_manual_ground_truth(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            gt_dir = root / "data" / "ground_truth"
+            gt_dir.mkdir(parents=True)
+            csv_path = gt_dir / "kik_report_ground_truth.csv"
+            csv_path.write_text(
+                "image_id,is_trade_equipment_photo,is_ice_cream_equipment,photo_crop_quality,"
+                "kik_present,kik_sku_count,kik_share_percent,status\n"
+                "a.jpg,true,true,full,true,4,30,attention\n",
+                encoding="utf-8",
+            )
+
+            labels_path, mode = resolve_kik_simple_labels_path(None, project_root=root)
+
+            self.assertEqual(mode, "generated_from_kik_report_ground_truth_csv")
+            self.assertEqual(labels_path.name, "manual_ground_truth_kik_simple.jsonl")
+            self.assertFalse((gt_dir / "manual_ground_truth.jsonl").exists())
+
     def test_boolean_scoring(self) -> None:
         expected = {"kik_present": True, "has_posm": False}
         predicted = {**make_mock_kik_prediction(), "kik_present": False, "has_posm": False}
@@ -114,6 +190,14 @@ class KikEvalTests(unittest.TestCase):
         scores = business_scores(expected, dict(expected))
         self.assertEqual(scores["kik_business_score_pct"], 100.0)
         self.assertEqual(scores["core_kik_score_pct"], 100.0)
+
+    def test_kik_simple_business_score_has_no_sku_family_group(self) -> None:
+        expected = make_mock_kik_simple_prediction()
+        scores = simple_business_scores(expected, dict(expected))
+
+        self.assertEqual(scores["kik_simple_business_score_pct"], 100.0)
+        self.assertEqual(scores["core_kik_score_pct"], 100.0)
+        self.assertNotIn("sku_family_score_pct", scores)
 
     def test_positive_gt_zero_predicted_sku_count_zeroes_photo_score(self) -> None:
         expected = {**make_mock_kik_prediction(), "kik_sku_count": 3}
@@ -181,7 +265,7 @@ class KikEvalTests(unittest.TestCase):
         parsed = json.loads(response.raw_response)
         self.assertTrue(validate_kik_prediction(parsed).ok)
 
-    def test_reference_images_are_sent_before_target(self) -> None:
+    def test_reference_images_use_canonical_target_near_final_contract(self) -> None:
         provider = OpenAICompatibleProvider("openrouter", "https://example.test", "token")
         payload = provider._make_payload(
             _mock_model(),
@@ -190,13 +274,14 @@ class KikEvalTests(unittest.TestCase):
             user_prompt="Analyze target.",
             schema_instruction="Return JSON only.",
             reference_images=[
-                ("cups reference", "data:image/jpeg;base64,ref1"),
-                ("cone reference", "data:image/jpeg;base64,ref2"),
+                ("REF_04 = KIK cup examples -> JSON field has_cup", "data:image/jpeg;base64,ref1"),
+                ("REF_03 = KIK cone examples -> JSON field has_cone", "data:image/jpeg;base64,ref2"),
             ],
         )
         content = payload["messages"][1]["content"]
         image_urls = [item["image_url"]["url"] for item in content if item.get("type") == "image_url"]
         text_blocks = [item["text"] for item in content if item.get("type") == "text"]
+        all_text = "\n".join(text_blocks).lower()
 
         self.assertEqual(
             image_urls,
@@ -206,8 +291,67 @@ class KikEvalTests(unittest.TestCase):
                 "data:image/jpeg;base64,target",
             ],
         )
-        self.assertTrue(any("REFERENCE IMAGE 1" in text for text in text_blocks))
-        self.assertTrue(any("TARGET IMAGE TO ANALYZE" in text for text in text_blocks))
+        self.assertTrue(any("IMAGE MAP" in text for text in text_blocks))
+        self.assertTrue(any("TARGET_00" in text for text in text_blocks))
+        self.assertTrue(any("REF_04" in text for text in text_blocks))
+        self.assertTrue(any("REF_03" in text for text in text_blocks))
+        self.assertFalse("above" in all_text)
+        self.assertFalse("below" in all_text)
+
+    def test_kik_simple_payload_uses_single_sku_sheet_contract(self) -> None:
+        provider = OpenAICompatibleProvider("openrouter", "https://example.test", "token")
+        task_spec = get_task_spec("kik_simple")
+        self.assertEqual(task_spec.image_prompt_contract["target_position"], "after_references")
+        payload = provider._make_payload(
+            _mock_model(),
+            "data:image/jpeg;base64,target",
+            "json_object",
+            user_prompt="Analyze target.",
+            schema_instruction="Return JSON only.",
+            reference_images=[
+                (task_spec.reference_label(Path("kik_sku_reference.jpg"), 1), "data:image/jpeg;base64,ref1"),
+            ],
+            image_prompt_contract=task_spec.image_prompt_contract,
+        )
+        content = payload["messages"][1]["content"]
+        image_urls = [item["image_url"]["url"] for item in content if item.get("type") == "image_url"]
+        text_blocks = [item["text"] for item in content if item.get("type") == "text"]
+        all_text = "\n".join(text_blocks)
+
+        self.assertEqual(image_urls, ["data:image/jpeg;base64,ref1", "data:image/jpeg;base64,target"])
+        self.assertIn("REF_SKU_SHEET", all_text)
+        self.assertIn("unique SKU", all_text)
+        self.assertNotIn("REF_01..REF_07", all_text)
+        self.assertNotIn("SKU-family field", all_text)
+
+    def test_google_aistudio_payload_uses_same_reference_target_order(self) -> None:
+        provider = GoogleAIStudioProvider("https://generativelanguage.googleapis.com/v1beta", "token")
+        model = _mock_model()
+        model.provider_model = "gemma-4-31b-it"
+        payload = provider._make_payload(
+            model,
+            "data:image/jpeg;base64,target",
+            "json_object",
+            system_prompt="System prompt.",
+            user_prompt="Analyze target.",
+            schema_instruction="Return JSON only.",
+            reference_images=[
+                ("REF_04 = KIK cup examples -> JSON field has_cup", "data:image/jpeg;base64,ref1"),
+                ("REF_03 = KIK cone examples -> JSON field has_cone", "data:image/jpeg;base64,ref2"),
+            ],
+        )
+        parts = payload["contents"][0]["parts"]
+        inline_images = [part["inline_data"]["data"] for part in parts if "inline_data" in part]
+        text_blocks = [part["text"] for part in parts if "text" in part]
+        all_text = "\n".join(text_blocks).lower()
+
+        self.assertEqual(inline_images, ["ref1", "ref2", "target"])
+        self.assertEqual(payload["generation_config"]["response_mime_type"], "application/json")
+        self.assertIn("system_instruction", payload)
+        self.assertTrue(any("TARGET_00" in text for text in text_blocks))
+        self.assertTrue(any("REF_04" in text for text in text_blocks))
+        self.assertFalse("above" in all_text)
+        self.assertFalse("below" in all_text)
 
     def test_reference_image_discovery(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -243,6 +387,17 @@ class KikEvalTests(unittest.TestCase):
         self.assertEqual(summary["kik_business_score_pct"], 100.0)
         self.assertEqual(summary["field_coverage_rate"], 1.0)
 
+    def test_kik_simple_summary_aggregation(self) -> None:
+        expected = make_mock_kik_simple_prediction()
+        row = _simple_result_row("photo.jpg", expected, dict(expected))
+        aggregate = aggregate_kik_simple_by_model([row])
+        summary = aggregate["summaries"][0]
+
+        self.assertEqual(summary["model_key"], "mock")
+        self.assertEqual(summary["schema_valid_rate"], 1.0)
+        self.assertEqual(summary["kik_simple_business_score_pct"], 100.0)
+        self.assertNotIn("sku_family_score_pct", summary)
+
     def test_kik_run_one_with_mock_provider(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -268,6 +423,31 @@ class KikEvalTests(unittest.TestCase):
             self.assertTrue(result["schema_valid"])
             self.assertEqual(result["task"], "kik")
 
+    def test_kik_simple_run_one_with_mock_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image_path = root / "photo.jpg"
+            labels_path = root / "manual_ground_truth.jsonl"
+            Image.new("RGB", (20, 20), color=(255, 255, 255)).save(image_path)
+            labels_path.write_text(
+                json.dumps({"image_id": image_path.name, **make_mock_kik_simple_prediction()}, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            case = load_kik_simple_cases(root, labels_path)[0]
+
+            import vlm_eval.run as run_module
+
+            original = run_module.create_provider
+            run_module.create_provider = lambda provider_name: MockProvider()
+            try:
+                result = run_one(case, _mock_model(), timeout_seconds=1, task_spec=get_task_spec("kik_simple"))
+            finally:
+                run_module.create_provider = original
+
+            self.assertTrue(result["json_parse_ok"])
+            self.assertTrue(result["schema_valid"])
+            self.assertEqual(result["task"], "kik_simple")
+
 
 def _result_row(image: str, expected: dict[str, object], parsed: dict[str, object]) -> dict[str, object]:
     return {
@@ -288,6 +468,30 @@ def _result_row(image: str, expected: dict[str, object], parsed: dict[str, objec
         "parsed": parsed,
         "expected": expected,
         "field_scores": score_kik_fields(expected, parsed),
+        "error": None,
+        "response_format_mode": "json_schema",
+    }
+
+
+def _simple_result_row(image: str, expected: dict[str, object], parsed: dict[str, object]) -> dict[str, object]:
+    return {
+        "image": image,
+        "task": "kik_simple",
+        "model_key": "mock",
+        "model": "mock",
+        "role": "mock",
+        "provider": "mock",
+        "provider_model": "mock",
+        "latency_ms": 100,
+        "json_parse_ok": True,
+        "schema_valid": True,
+        "retry_count": 0,
+        "api_retry_count": 0,
+        "token_usage": None,
+        "raw_response": json.dumps(parsed, ensure_ascii=False),
+        "parsed": parsed,
+        "expected": expected,
+        "field_scores": score_kik_simple_fields(expected, parsed),
         "error": None,
         "response_format_mode": "json_schema",
     }

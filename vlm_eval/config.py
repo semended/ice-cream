@@ -21,6 +21,7 @@ class ModelConfig:
     openrouter_model: str | None = None
     deepinfra_model: str | None = None
     local_vllm_model: str | None = None
+    google_aistudio_model: str | None = None
 
     def with_provider(self, provider: str | None) -> "ModelConfig":
         if not provider:
@@ -93,6 +94,7 @@ def load_models(path: Path) -> dict[str, ModelConfig]:
             openrouter_model=data.get("openrouter_model"),
             deepinfra_model=data.get("deepinfra_model"),
             local_vllm_model=data.get("local_vllm_model"),
+            google_aistudio_model=data.get("google_aistudio_model"),
         )
     return result
 

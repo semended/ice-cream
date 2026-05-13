@@ -6,6 +6,7 @@ import html
 import json
 import math
 import os
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -46,9 +47,7 @@ FIELD_GROUPS = [
         [
             "has_posm",
             "has_monobrand_block",
-            "has_foreign_label",
             "has_non_icecream_products",
-            "has_empty_sections",
             "is_kik_mixed_with_competitors",
         ],
     ),
@@ -57,7 +56,6 @@ FIELD_GROUPS = [
         [
             "is_trade_equipment_photo",
             "is_ice_cream_equipment",
-            "photo_crop_is_full",
         ],
     ),
 ]
@@ -78,9 +76,7 @@ FIELD_LABELS = {
     "has_poleno_or_briquette": "Брикет или полено",
     "has_posm": "POSM / фирменные ценники",
     "has_monobrand_block": "Монобрендовый блок",
-    "has_foreign_label": "Чужая бирка",
     "has_non_icecream_products": "Посторонние товары",
-    "has_empty_sections": "Пустые секции",
     "is_kik_mixed_with_competitors": "КИК перемешан с конкурентами",
     "status_score": "Статус точки",
 }
@@ -108,12 +104,9 @@ BUSINESS_WEIGHTS = {
     "has_monobrand_block": 4.0,
     "is_kik_mixed_with_competitors": 4.0,
     "has_posm": 3.0,
-    "has_foreign_label": 1.5,
     "has_non_icecream_products": 1.5,
-    "has_empty_sections": 1.0,
     "is_trade_equipment_photo": 2.0,
     "is_ice_cream_equipment": 2.0,
-    "photo_crop_is_full": 0.75,
     "status_score": 8.0,
 }
 
@@ -287,11 +280,13 @@ def render_report(
 
 def render_hero(run_dir: Path, summaries: list[dict[str, Any]]) -> str:
     best = summaries[0]
+    model_count = len(summaries)
+    case_count = int(as_float(best.get("total_cases")) or len(summaries))
     return f"""
 <header class="top">
   <div class="top__copy">
     <p class="eyebrow">KIK retail execution VLM benchmark</p>
-    <h1>7 моделей, 10 фото: кто реально видит КИК, SKU и выкладку</h1>
+    <h1>{model_count} моделей, {case_count} фото: кто реально видит КИК, SKU и выкладку</h1>
     <p class="lead">Отчет по прогону <span class="mono">{esc(run_dir.as_posix())}</span>. Модели отсортированы по <strong>kik_business_score_pct</strong>: от лучшей в зачете к худшей. Абсолютный уровень низкий у всех, поэтому это рейтинг кандидатов, а не зеленый свет на полностью автоматический prod.</p>
   </div>
   <div class="hero-score">
@@ -315,6 +310,22 @@ def render_model_nav(summaries: list[dict[str, Any]]) -> str:
 
 def render_contract(run_dir: Path) -> str:
     config_path = run_dir / "config_snapshot.yaml"
+    config_text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    reference_count = int(_config_scalar(config_text, "reference_count") or 0)
+    references = _config_scalar(config_text, "references") or ""
+    image_contract = _config_scalar(config_text, "image_prompt_contract")
+    if reference_count > 0:
+        reference_li = (
+            f"Reference-картинки SKU <strong>отправлялись</strong>: {reference_count} шт. "
+            f"<span class=\"mono\">{esc(references)}</span>."
+        )
+    else:
+        reference_li = "Reference-картинки SKU <strong>не отправлялись</strong>: модель видела target photo, system prompt, user prompt и JSON schema."
+    contract_li = (
+        f"Image prompt contract: <span class=\"mono\">{esc(image_contract)}</span>."
+        if image_contract
+        else "Image prompt contract см. в system/user prompt ниже."
+    )
     return f"""
 <section class="section contract">
   <div class="section-head">
@@ -327,8 +338,9 @@ def render_contract(run_dir: Path) -> str:
       <ul>
         <li>Одна target-фотография из <span class="mono">data/real_images</span>; в папке лежат только реальные JPG.</li>
         <li>Изображение кодировалось как <span class="mono">image_url</span> и ужималось до max side 1024 px по config.</li>
-        <li>Reference-картинки SKU в этом isolated-run <strong>не отправлялись</strong>: модель видела только target photo, system prompt, user prompt и JSON schema.</li>
-        <li>Температура 0, output limit 512 токенов у всех, кроме GLM с 1024 токенами после фикса.</li>
+        <li>{reference_li}</li>
+        <li>{contract_li}</li>
+        <li>Температура, output limit, provider и retry settings указаны в config snapshot.</li>
       </ul>
       <p class="small">Config snapshot: <span class="mono">{esc(config_path.as_posix())}</span></p>
     </article>
@@ -342,16 +354,21 @@ def render_contract(run_dir: Path) -> str:
       </ul>
     </article>
   </div>
-  <details class="prompt-box">
-    <summary>Показать system prompt</summary>
-    <pre>{esc(SYSTEM_PROMPT)}</pre>
-  </details>
-  <details class="prompt-box">
-    <summary>Показать user prompt + schema instruction</summary>
-    <pre>{esc(USER_PROMPT + chr(10) + chr(10) + json_schema_instruction())}</pre>
-  </details>
+  <p class="small">Отчет показывает только поля текущего зачета. Технические поля схемы, которые не участвуют в оценке, здесь не выводятся.</p>
 </section>
 """
+
+
+def _config_scalar(config_text: str, key: str) -> str | None:
+    match = re.search(rf"^\s*{re.escape(key)}:\s*(.*?)\s*$", config_text, flags=re.MULTILINE)
+    if not match:
+        return None
+    value = match.group(1).strip()
+    if value in {"null", "None", ""}:
+        return None
+    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+        return value[1:-1]
+    return value
 
 
 def render_ranking(summaries: list[dict[str, Any]], by_model: dict[str, list[dict[str, Any]]]) -> str:

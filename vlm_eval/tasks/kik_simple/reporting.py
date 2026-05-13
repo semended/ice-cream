@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from ...reporting import write_csv, write_jsonl
-from .scoring import EXCLUDED_FROM_BUSINESS_SCORE, SCORED_REQUIRED_FIELDS
+from .schema import KIK_SIMPLE_REQUIRED_FIELDS
 
-KIK_SUMMARY_COLUMNS = [
+KIK_SIMPLE_SUMMARY_COLUMNS = [
     "model_key",
     "model",
     "role",
@@ -18,9 +17,8 @@ KIK_SUMMARY_COLUMNS = [
     "schema_valid_rate",
     "avg_latency_sec",
     "p95_latency_sec",
-    "kik_business_score_pct",
+    "kik_simple_business_score_pct",
     "core_kik_score_pct",
-    "sku_family_score_pct",
     "execution_score_pct",
     "equipment_photo_score_pct",
     "status_actionability_score_pct",
@@ -35,7 +33,6 @@ KIK_SUMMARY_COLUMNS = [
     "sku_within_2_accuracy",
     "kik_share_percent_mae",
     "share_within_10pp_accuracy",
-    "sku_family_macro_f1",
     "execution_macro_f1",
     "status_score_accuracy",
     "critical_recall",
@@ -46,7 +43,7 @@ KIK_SUMMARY_COLUMNS = [
 ]
 
 
-def write_kik_outputs(
+def write_kik_simple_outputs(
     run_dir: Path,
     results: list[dict[str, Any]],
     aggregates: dict[str, Any],
@@ -54,11 +51,10 @@ def write_kik_outputs(
     labels_path: Path,
     models_tested: list[str],
 ) -> None:
-    clean_results = [clean_score_row(row) for row in results]
-    errors = [row for row in clean_results if row.get("error")]
-    write_jsonl(run_dir / "results.jsonl", sorted(clean_results, key=lambda row: (row["model_key"], row["image"])))
+    errors = [row for row in results if row.get("error")]
+    write_jsonl(run_dir / "results.jsonl", sorted(results, key=lambda row: (row["model_key"], row["image"])))
     write_jsonl(run_dir / "errors.jsonl", errors)
-    write_csv(run_dir / "summary.csv", aggregates["summaries"], KIK_SUMMARY_COLUMNS)
+    write_csv(run_dir / "summary.csv", aggregates["summaries"], KIK_SIMPLE_SUMMARY_COLUMNS)
     write_csv(run_dir / "boolean_metrics_by_model.csv", aggregates["boolean_rows"])
     write_csv(run_dir / "numeric_metrics_by_model.csv", aggregates["numeric_rows"])
     write_csv(run_dir / "business_key_metrics_by_model.csv", aggregates["business_rows"])
@@ -75,21 +71,6 @@ def write_kik_outputs(
     )
 
 
-def clean_score_row(row: dict[str, Any]) -> dict[str, Any]:
-    clean = dict(row)
-    for key in ("expected", "parsed", "field_scores"):
-        value = clean.get(key)
-        if isinstance(value, dict):
-            clean[key] = {
-                field: field_value
-                for field, field_value in value.items()
-                if field not in EXCLUDED_FROM_BUSINESS_SCORE
-            }
-    if isinstance(clean.get("parsed"), dict):
-        clean["raw_response"] = json.dumps(clean["parsed"], ensure_ascii=False)
-    return clean
-
-
 def write_summary_md(
     path: Path,
     summaries: list[dict[str, Any]],
@@ -99,7 +80,7 @@ def write_summary_md(
     models_tested: list[str],
 ) -> None:
     lines = [
-        "# KIK Retail Execution Eval Summary",
+        "# KIK Simple SKU Lookup Eval Summary",
         "",
         f"- Benchmark date: {datetime.now().isoformat(timespec='seconds')}",
         f"- Dataset size: {dataset_size}",
@@ -109,13 +90,12 @@ def write_summary_md(
         "## Main Ranking",
         "",
         *_table(
-            sorted(summaries, key=lambda row: _sort_value(row.get("kik_business_score_pct")), reverse=True),
+            sorted(summaries, key=lambda row: _sort_value(row.get("kik_simple_business_score_pct")), reverse=True),
             [
                 "model_key",
                 "role",
-                "kik_business_score_pct",
+                "kik_simple_business_score_pct",
                 "core_kik_score_pct",
-                "sku_family_score_pct",
                 "execution_score_pct",
                 "critical_recall",
                 "schema_valid_rate",
@@ -138,14 +118,13 @@ def write_summary_md(
         lines.extend([f"## {title}", ""])
         lines.extend(
             _table(
-                sorted(rows, key=lambda row: _sort_value(row.get("kik_business_score_pct")), reverse=True),
+                sorted(rows, key=lambda row: _sort_value(row.get("kik_simple_business_score_pct")), reverse=True),
                 [
                     "model_key",
-                    "kik_business_score_pct",
+                    "kik_simple_business_score_pct",
                     "kik_present_f1",
                     "kik_sku_count_mae",
                     "kik_share_percent_mae",
-                    "sku_family_macro_f1",
                     "execution_macro_f1",
                     "critical_recall",
                 ],
@@ -155,9 +134,8 @@ def write_summary_md(
 
     best_checks = [
         ("KIK presence", "kik_present_f1", False),
-        ("SKU count", "kik_sku_count_mae", True),
+        ("Unique SKU count", "kik_sku_count_mae", True),
         ("KIK share", "kik_share_percent_mae", True),
-        ("SKU family detection", "sku_family_macro_f1", False),
         ("Execution violations", "execution_macro_f1", False),
         ("Critical status detection", "critical_recall", False),
     ]
@@ -171,26 +149,24 @@ def write_summary_md(
         rows = [row for row in worst_rows if row.get("model_key") == model_key][:5]
         if not rows:
             continue
-        cases = ", ".join(f"{row.get('image')} ({_fmt(row.get('kik_business_score_pct'))})" for row in rows)
+        cases = ", ".join(f"{row.get('image')} ({_fmt(row.get('kik_simple_business_score_pct'))})" for row in rows)
         lines.append(f"- `{model_key}`: {cases}")
 
     lines.extend(["", "## Recommendation", ""])
-    best_heavy = _best_by([row for row in summaries if row.get("role") == "quality_ceiling"], "kik_business_score_pct")
-    best_prod = _best_by([row for row in summaries if row.get("role") == "production_candidate"], "kik_business_score_pct")
-    best_ocr = _best_by([row for row in summaries if row.get("role") == "production_candidate"], "sku_family_macro_f1")
-    reject = [row["model_key"] for row in summaries if (row.get("kik_business_score_pct") or 0) < 60]
-    lines.append(f"- Best heavy benchmark model: {_best_text(best_heavy, 'kik_business_score_pct')}")
-    lines.append(f"- Best self-host production candidate: {_best_text(best_prod, 'kik_business_score_pct')}")
-    lines.append(f"- Best OCR/fallback candidate: {_best_text(best_ocr, 'sku_family_macro_f1')}")
+    best_heavy = _best_by([row for row in summaries if row.get("role") == "quality_ceiling"], "kik_simple_business_score_pct")
+    best_prod = _best_by([row for row in summaries if row.get("role") == "production_candidate"], "kik_simple_business_score_pct")
+    reject = [row["model_key"] for row in summaries if (row.get("kik_simple_business_score_pct") or 0) < 60]
+    lines.append(f"- Best heavy benchmark model: {_best_text(best_heavy, 'kik_simple_business_score_pct')}")
+    lines.append(f"- Best self-host production candidate: {_best_text(best_prod, 'kik_simple_business_score_pct')}")
     lines.append(f"- Models to reject: {', '.join(reject) if reject else 'none from this run'}")
     lines.append(f"- Self-host candidate close enough to heavy ceiling: {_ceiling_gap_text(best_prod, best_heavy)}")
 
     lines.extend(["", "## Production Thresholds", ""])
     lines.append("- 90-100%: excellent; 85-90%: strong production candidate; 75-85%: fallback/manual-assist; 60-75%: weak baseline; <60%: reject.")
-    lines.append("- Hard minimum: kik_present_f1 >= 0.95, kik_sku_count_mae <= 1.5, kik_share_percent_mae <= 10, sku_family_macro_f1 >= 0.85, critical_recall >= 0.90, schema_valid_rate >= 0.98.")
+    lines.append("- Hard minimum: kik_present_f1 >= 0.95, kik_sku_count_mae <= 1.5, kik_share_percent_mae <= 10, critical_recall >= 0.90, schema_valid_rate >= 0.98.")
 
-    lines.extend(["", "## KIK Fields", ""])
-    lines.append(", ".join(f"`{field}`" for field in SCORED_REQUIRED_FIELDS))
+    lines.extend(["", "## KIK Simple Fields", ""])
+    lines.append(", ".join(f"`{field}`" for field in KIK_SIMPLE_REQUIRED_FIELDS))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -217,7 +193,7 @@ def _best_text(row: dict[str, Any] | None, field: str) -> str:
 def _ceiling_gap_text(prod: dict[str, Any] | None, heavy: dict[str, Any] | None) -> str:
     if not prod or not heavy:
         return "not enough data"
-    gap = (heavy.get("kik_business_score_pct") or 0) - (prod.get("kik_business_score_pct") or 0)
+    gap = (heavy.get("kik_simple_business_score_pct") or 0) - (prod.get("kik_simple_business_score_pct") or 0)
     return "yes" if gap <= 5 else f"needs work, gap {_fmt(gap)} pct points"
 
 

@@ -63,6 +63,7 @@ models:
     provider: openrouter
     provider_model: google/gemma-4-31b-it
     openrouter_model: google/gemma-4-31b-it
+    google_aistudio_model: gemma-4-31b-it
     local_vllm_model: google/gemma-4-31B-it
     enabled_by_default: true
     heavy: false

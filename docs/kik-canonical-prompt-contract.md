@@ -213,6 +213,14 @@ Return only JSON.
 
 The active runner uses a simplified flat schema from `vlm_eval/tasks/kik/schema.py`. It no longer includes equipment subtype, photo quality, analysis/confidence scores, fill level, large-pack fallback, or uncertainty notes.
 
+The active provider payload now uses the canonical image-binding layer:
+
+- an `IMAGE MAP` text block with `TARGET_00` and `REF_01` ... `REF_07`;
+- each reference image labeled by its canonical `REF_*` ID;
+- the `TARGET_00` label and target image immediately before the final task text, to keep the scored image nearest to the answer instruction in OpenRouter/Gemma runs;
+- the final task text after the images;
+- no positional references such as "above", "below", "first", or "second".
+
 Runtime field mapping:
 
 - `is_trade_equipment_photo` -> canonical `is_retail_equipment`
@@ -227,5 +235,4 @@ Migrating fully to the nested canonical contract should be done as one coordinat
 - replace the runtime schema and validator with nested field names;
 - normalize old ground-truth fields to the new nested output fields or update ground truth;
 - update scoring/reporting field names;
-- update tests for canonical payload ordering: `TARGET_00` label + target image first, then `REF_01` ... `REF_07` label/image pairs, then the final user prompt text;
-- update the provider payload builder, because the current runtime sends reference images before the target image.
+- add diagnostic fields such as `matched_reference_groups` when running binding-specific experiments.

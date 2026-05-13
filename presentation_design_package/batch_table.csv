@@ -1,0 +1,11 @@
+photo_id,kik_present,kik_share_gemma,sku_gemma,posm,monobrand_block,mixed,status_gemma,status_gt,priority,recommendation
+photo_001,true,15,5,false,false,false,attention,critical,high,"Increase KIK share, check foreign products"
+photo_002,true,40,10,false,true,true,normal,attention,medium,"Group KIK into a separate block"
+photo_003,true,60,15,true,true,true,normal,attention,medium,"Check share and mixing, POSM case"
+photo_004,true,30,10,false,false,true,normal,attention,high,"Problem case: segmentation needed"
+photo_005,true,90,22,false,true,false,normal,attention,medium,"Check POSM label and partial frame"
+photo_006,true,35,12,false,false,true,attention,attention,high,"Hero case: group KIK into block and improve presence"
+photo_007,true,10,4,false,false,true,attention,critical,high,"Poor photo plus low share, reshoot/check needed"
+photo_008,true,100,18,true,true,false,normal,attention,low,"Good monoblock, check POSM/foreign label"
+photo_009,true,100,20,false,true,false,normal,attention,medium,"Low fill / partial photo"
+photo_010,true,45,15,false,false,true,normal,attention,medium,"Group block, clarify SKU count"

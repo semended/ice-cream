@@ -2,6 +2,11 @@
 
 KIK-only VLM benchmark for auditing retail ice-cream equipment photos.
 
+There are two task branches:
+
+- `kik` default: old flow with SKU-family classification fields and 7 separate reference images;
+- `kik_simple`: simplified SKU lookup flow with one SKU reference sheet, no SKU-family classification, and the same GT core fields.
+
 The project compares vision-language models on business fields for «Коровка из Кореновки» / КИК:
 
 - KIK presence;
@@ -20,6 +25,7 @@ The project compares vision-language models on business fields for «Коров�
 data/
   real_images/                 target JPG photos
   reference_images_slides/     selected KIK visual references
+  reference_images_sku_sheet/   optional single reference sheet for --task kik_simple
   reference_candidates/        backup source crops/candidates for references
   ground_truth/
     kik_report_ground_truth.csv
@@ -66,6 +72,17 @@ python -m vlm_eval.run \
   --output runs/kik_eval
 ```
 
+Simplified SKU lookup smoke test:
+
+```bash
+python -m vlm_eval.run \
+  --task kik_simple \
+  --models mock \
+  --limit 2 \
+  --output runs/kik_simple_eval \
+  --no-references
+```
+
 ## Run Benchmark
 
 Production candidates:
@@ -89,6 +106,57 @@ python -m vlm_eval.run \
   --include-heavy \
   --concurrency 3 \
   --output runs/kik_eval
+```
+
+Retry or continue a partially failed run without re-running successful image/model pairs:
+
+```bash
+python -m vlm_eval.run \
+  --images data/real_images \
+  --references data/reference_images_slides \
+  --models gemma4_31b \
+  --concurrency 1 \
+  --resume-from runs/kik_eval/<failed_timestamp> \
+  --output runs/kik_eval
+```
+
+For rate-limited hosted providers, tune retry behavior with:
+
+```bash
+export VLM_EVAL_API_MAX_ATTEMPTS=5
+export VLM_EVAL_RETRY_BASE_SECONDS=10
+export VLM_EVAL_RETRY_MAX_SECONDS=120
+```
+
+Direct Google AI Studio / Gemini API path for Gemma 4 31B:
+
+```bash
+export GEMINI_API_KEY=...
+python -m vlm_eval.run \
+  --images data/real_images \
+  --references data/reference_images_slides \
+  --models gemma4_31b \
+  --provider google_aistudio \
+  --concurrency 1 \
+  --output runs/kik_eval_gemma4_31b_google_aistudio
+```
+
+Manual AI Studio UI responses can be scored with:
+
+```bash
+python src/score_manual_aistudio_predictions.py
+```
+
+Simplified SKU lookup benchmark with one reference sheet:
+
+```bash
+python -m vlm_eval.run \
+  --task kik_simple \
+  --images data/real_images \
+  --reference-sheet data/reference_images_sku_sheet/kik_sku_reference.png \
+  --models qwen3_vl_30b,qwen25_vl_72b,gemma4_31b,glm_46v,mistral_small_4 \
+  --concurrency 3 \
+  --output runs/kik_simple_eval
 ```
 
 The runner loads only `.jpg` / `.jpeg` target images.
@@ -147,6 +215,8 @@ codex --cd /Users/semengolodnuk/Documents/ice_cream/ice-cream-vlm-mvp --profile 
 
 ## Notes
 
-`data/reference_images_slides/` contains the active reference set. The runner sends references in the canonical REF_01..REF_07 order unless `--no-references` is passed.
+`data/reference_images_slides/` contains the active reference set for `--task kik`. The runner sends those references in the canonical REF_01..REF_07 order unless `--no-references` is passed.
+
+`--task kik_simple` uses one reference-sheet image via `--reference-sheet`; by default it looks for `data/reference_images_sku_sheet/kik_sku_reference.png`. This branch removes SKU-family fields such as `has_cup`, `has_eskimo`, `has_bucket`, and keeps unique SKU count, KIK share, execution checks, and status.
 
 The intended canonical KIK prompt/image-map contract is recorded in `docs/kik-canonical-prompt-contract.md`. The active runtime currently uses a simplified flat schema in `vlm_eval/tasks/kik/schema.py`; it keeps only business-visible KIK fields and maps brick/log into `has_poleno_or_briquette`.

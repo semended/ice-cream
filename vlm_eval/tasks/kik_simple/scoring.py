@@ -5,53 +5,20 @@ from collections import Counter, defaultdict
 from statistics import mean
 from typing import Any
 
-from .schema import KIK_BOOLEAN_FIELDS, KIK_NUMERIC_FIELDS, KIK_REQUIRED_FIELDS
-
-SKU_FAMILY_FIELDS = [
-    "has_cup",
-    "has_eskimo",
-    "has_lakomka",
-    "has_cone",
-    "has_sandwich",
-    "has_bucket",
-    "has_poleno_or_briquette",
-]
+from .schema import KIK_SIMPLE_BOOLEAN_FIELDS, KIK_SIMPLE_NUMERIC_FIELDS, KIK_SIMPLE_REQUIRED_FIELDS
 
 EXECUTION_FIELDS = [
     "has_monobrand_block",
     "is_kik_mixed_with_competitors",
-    "has_posm",
     "has_non_icecream_products",
 ]
 
-EXCLUDED_FROM_BUSINESS_SCORE = {
-    "photo_crop_is_full",
-    "has_foreign_label",
-    "has_empty_sections",
-}
-
-SCORED_BOOLEAN_FIELDS = [
-    field for field in KIK_BOOLEAN_FIELDS if field not in EXCLUDED_FROM_BUSINESS_SCORE
-]
-
-SCORED_REQUIRED_FIELDS = [
-    field for field in KIK_REQUIRED_FIELDS if field not in EXCLUDED_FROM_BUSINESS_SCORE
-]
-
 BUSINESS_WEIGHTS = {
-    "kik_present": 12.0,
-    "kik_sku_count": 12.0,
-    "kik_share_percent": 12.0,
-    "has_cup": 4.0,
-    "has_eskimo": 4.0,
-    "has_lakomka": 4.0,
-    "has_cone": 3.0,
-    "has_sandwich": 3.0,
-    "has_bucket": 2.0,
-    "has_poleno_or_briquette": 3.5,
+    "kik_present": 16.0,
+    "kik_sku_count": 24.0,
+    "kik_share_percent": 24.0,
     "has_monobrand_block": 4.0,
     "is_kik_mixed_with_competitors": 4.0,
-    "has_posm": 3.0,
     "has_non_icecream_products": 1.5,
     "is_trade_equipment_photo": 2.0,
     "is_ice_cream_equipment": 2.0,
@@ -60,7 +27,6 @@ BUSINESS_WEIGHTS = {
 
 FIELD_GROUPS = {
     "core_kik_score_pct": {"kik_present", "kik_sku_count", "kik_share_percent"},
-    "sku_family_score_pct": set(SKU_FAMILY_FIELDS),
     "execution_score_pct": set(EXECUTION_FIELDS),
     "equipment_photo_score_pct": {
         "is_trade_equipment_photo",
@@ -70,19 +36,19 @@ FIELD_GROUPS = {
 }
 
 
-def score_kik_fields(expected: dict[str, Any], predicted: dict[str, Any] | None) -> dict[str, float]:
+def score_kik_simple_fields(expected: dict[str, Any], predicted: dict[str, Any] | None) -> dict[str, float]:
     if predicted is None:
         return {field: 0.0 for field, value in expected.items() if _is_scorable_expected(field, value)}
     scores: dict[str, float] = {}
     for field, expected_value in expected.items():
         if not _is_scorable_expected(field, expected_value):
             continue
-        scores[field] = score_kik_value(field, expected_value, predicted.get(field))
+        scores[field] = score_kik_simple_value(field, expected_value, predicted.get(field))
     return scores
 
 
-def score_kik_value(field: str, expected: Any, predicted: Any) -> float:
-    if field in KIK_BOOLEAN_FIELDS:
+def score_kik_simple_value(field: str, expected: Any, predicted: Any) -> float:
+    if field in KIK_SIMPLE_BOOLEAN_FIELDS:
         return 1.0 if isinstance(predicted, bool) and predicted == expected else 0.0
     if field == "kik_sku_count":
         return _bounded_numeric_score(expected, predicted, cap=10)
@@ -96,17 +62,17 @@ def score_kik_value(field: str, expected: Any, predicted: Any) -> float:
 def business_scores(expected: dict[str, Any], predicted: dict[str, Any] | None) -> dict[str, float | None]:
     if _missed_existing_kik_skus(expected, predicted):
         return {
-            "kik_business_score_pct": 0.0,
+            "kik_simple_business_score_pct": 0.0,
             **{group_name: 0.0 for group_name in FIELD_GROUPS},
         }
-    field_scores = score_kik_fields(expected, predicted)
-    result = {"kik_business_score_pct": _weighted_pct(field_scores, set(BUSINESS_WEIGHTS))}
+    field_scores = score_kik_simple_fields(expected, predicted)
+    result = {"kik_simple_business_score_pct": _weighted_pct(field_scores, set(BUSINESS_WEIGHTS))}
     for group_name, fields in FIELD_GROUPS.items():
         result[group_name] = _weighted_pct(field_scores, fields)
     return result
 
 
-def aggregate_kik_by_model(results: list[dict[str, Any]]) -> dict[str, Any]:
+def aggregate_kik_simple_by_model(results: list[dict[str, Any]]) -> dict[str, Any]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for result in results:
         grouped[result["model_key"]].append(result)
@@ -147,9 +113,8 @@ def aggregate_kik_by_model(results: list[dict[str, Any]]) -> dict[str, Any]:
             "total_tokens": _sum_usage(rows, "total_tokens"),
         }
         for field in [
-            "kik_business_score_pct",
+            "kik_simple_business_score_pct",
             "core_kik_score_pct",
-            "sku_family_score_pct",
             "execution_score_pct",
             "equipment_photo_score_pct",
             "status_actionability_score_pct",
@@ -157,7 +122,7 @@ def aggregate_kik_by_model(results: list[dict[str, Any]]) -> dict[str, Any]:
             summary[field] = _clean_mean([score[field] for score in row_business_scores])
 
         boolean_by_field: dict[str, dict[str, Any]] = {}
-        for field in SCORED_BOOLEAN_FIELDS:
+        for field in KIK_SIMPLE_BOOLEAN_FIELDS:
             metrics = boolean_metrics(rows, field)
             boolean_by_field[field] = metrics
             boolean_rows.append(_metric_row(meta, field, "boolean", metrics))
@@ -173,7 +138,7 @@ def aggregate_kik_by_model(results: list[dict[str, Any]]) -> dict[str, Any]:
         hallucination = kik_hallucination_metrics(rows)
         summary.update(hallucination)
 
-        numeric_by_field = {field: numeric_metrics(rows, field) for field in KIK_NUMERIC_FIELDS}
+        numeric_by_field = {field: numeric_metrics(rows, field) for field in KIK_SIMPLE_NUMERIC_FIELDS}
         for field, metrics in numeric_by_field.items():
             numeric_rows.append(_metric_row(meta, field, "numeric", metrics))
         summary.update(
@@ -186,7 +151,6 @@ def aggregate_kik_by_model(results: list[dict[str, Any]]) -> dict[str, Any]:
             }
         )
 
-        summary["sku_family_macro_f1"] = macro_f1(boolean_by_field, SKU_FAMILY_FIELDS)
         summary["execution_macro_f1"] = macro_f1(boolean_by_field, EXECUTION_FIELDS)
         status = status_metrics(rows)
         summary.update(status)
@@ -211,7 +175,7 @@ def aggregate_kik_by_model(results: list[dict[str, Any]]) -> dict[str, Any]:
         "numeric_rows": numeric_rows,
         "business_rows": business_rows,
         "coverage_rows": coverage_rows,
-        "worst_rows": sorted(worst_rows, key=lambda row: (row["model_key"], row["kik_business_score_pct"])),
+        "worst_rows": sorted(worst_rows, key=lambda row: (row["model_key"], row["kik_simple_business_score_pct"])),
         "confusion_rows": confusion_rows,
     }
 
@@ -251,7 +215,7 @@ def numeric_metrics(rows: list[dict[str, Any]], field: str) -> dict[str, Any]:
             continue
         predicted = _as_int(_pred_value(row, field))
         pairs.append((expected, predicted))
-        scores.append(score_kik_value(field, expected, predicted))
+        scores.append(score_kik_simple_value(field, expected, predicted))
     errors = [abs(gt - pred) for gt, pred in pairs if pred is not None]
     metrics = {
         "n": len(pairs),
@@ -311,7 +275,7 @@ def coverage_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     total_expected = 0
     total_covered = 0
     null_rates: list[float] = []
-    for field in SCORED_REQUIRED_FIELDS:
+    for field in KIK_SIMPLE_REQUIRED_FIELDS:
         expected_non_null = 0
         covered = 0
         pred_null = 0
@@ -359,7 +323,7 @@ def worst_case_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "model": row.get("model") or row.get("provider_model"),
                 "role": row.get("role"),
                 "image": row.get("image"),
-                "kik_business_score_pct": scores["kik_business_score_pct"],
+                "kik_simple_business_score_pct": scores["kik_simple_business_score_pct"],
                 "core_kik_score_pct": scores["core_kik_score_pct"],
                 "error_field_count": len(error_fields),
                 "error_fields": ";".join(error_fields),
@@ -412,13 +376,11 @@ def percentile(values: list[float], p: int) -> float | None:
 
 def _business_rows(meta: dict[str, Any], summary: dict[str, Any], hallucination: dict[str, Any]) -> list[dict[str, Any]]:
     fields = [
-        "kik_business_score_pct",
+        "kik_simple_business_score_pct",
         "core_kik_score_pct",
-        "sku_family_score_pct",
         "execution_score_pct",
         "equipment_photo_score_pct",
         "status_actionability_score_pct",
-        "sku_family_macro_f1",
         "execution_macro_f1",
         "critical_recall",
         "critical_precision",
