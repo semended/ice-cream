@@ -2,6 +2,20 @@
 
 KIK-only VLM benchmark for auditing retail ice-cream equipment photos.
 
+## Demo · фото-контроль точки
+
+Финальная product demo: **[`kik-product-demo-final.html`](./kik-product-demo-final.html)** в корне проекта. Один сценарий: фото торговой точки (`photo_006`) → разбор представленности КИК → задачи для ТП. Standalone HTML, без бэкенда и сборки.
+
+Открыть локально:
+
+```bash
+open kik-product-demo-final.html
+```
+
+Опубликовать на GitHub Pages: `Settings → Pages → Source: Deploy from a branch → Branch: main / (root) → Save`. После активации ссылка: `https://semended.github.io/ice-cream/kik-product-demo-final.html`.
+
+Используемое фото: `assets/demo/photo_006.jpg`.
+
 There are two task branches:
 
 - `kik` default: old flow with SKU-family classification fields and 7 separate reference images;

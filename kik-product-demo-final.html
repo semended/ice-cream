@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>КИК · Demo photo_006</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{
+  --bg:#F2EDE3; --bg2:#FAF6EC; --paper:#fff;
+  --ink:#1B1916; --ink2:#4B453E; --ink3:#8A8278; --ink4:#B4ADA1;
+  --line:#E6DFD2; --line2:#EFE8DA;
+  --kik:#B22A2A; --kik-deep:#7A1B1B; --kik-soft:#F7E7E5;
+  --ok:#2F7D52; --warn:#C76A12; --dark:#1A1714;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --shadow:0 1px 2px rgba(0,0,0,0.04), 0 12px 36px rgba(0,0,0,0.07);
+  --shadow-card:0 2px 6px rgba(0,0,0,0.05), 0 18px 48px rgba(0,0,0,0.09);
+  --r:14px; --rs:8px; --rl:20px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);min-height:100vh;line-height:1.4;
+  font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+img{display:block;max-width:100%}
+button{font-family:inherit;cursor:pointer;border:none}
+ul,ol{list-style:none}
+
+/* HEADER */
+.hdr{height:78px;padding:0 56px;display:flex;align-items:center;justify-content:space-between;
+  background:var(--bg);position:sticky;top:0;z-index:50}
+.brand{display:flex;align-items:center;gap:14px}
+.brand-m{width:42px;height:42px;border-radius:50%;background:var(--kik);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px}
+.brand-n{font-size:18px;font-weight:700}
+.brand-s{width:1px;height:22px;background:var(--line);margin:0 8px}
+.brand-x{font-size:14px;font-weight:600;color:var(--ink3)}
+.tag{display:inline-flex;align-items:center;gap:12px;padding:8px 18px 8px 8px;
+  background:var(--paper);border:1px solid var(--line);border-radius:12px;
+  font-size:13px;color:var(--ink2);font-weight:600;box-shadow:var(--shadow)}
+.tag .ib{width:28px;height:28px;border-radius:6px;background:var(--bg2);
+  display:flex;align-items:center;justify-content:center;color:var(--ink3)}
+.tag .ib svg{width:16px;height:16px}
+.tag strong{font-family:var(--mono);color:var(--ink);letter-spacing:0.06em;font-weight:700}
+
+.shell{max-width:1500px;margin:0 auto;padding:40px 56px 64px}
+.shell.narrow{max-width:760px;padding:80px 48px 96px}
+
+.eyebrow{display:inline-flex;align-items:center;gap:14px;font-size:12px;font-weight:800;
+  letter-spacing:0.18em;text-transform:uppercase;color:var(--kik)}
+.eyebrow::before{content:"";width:32px;height:2px;background:var(--kik)}
+
+.btn{display:inline-flex;align-items:center;gap:12px;padding:18px 30px;
+  background:var(--kik);color:#fff;font-size:16px;font-weight:700;border-radius:var(--rs);
+  box-shadow:0 2px 0 var(--kik-deep), 0 10px 24px rgba(178,42,42,0.26);
+  transition:transform .15s, background .15s}
+.btn:hover{background:var(--kik-deep);transform:translateY(-1px)}
+.btn svg{width:20px;height:20px}
+
+.screen{display:none;animation:fade .3s}
+.screen[data-active]{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* START · HERO */
+.hero{display:grid;grid-template-columns:minmax(0,0.95fr) minmax(0,1fr);
+  gap:48px;align-items:center}
+.pcard{background:var(--paper);border:1px solid var(--line);
+  border-radius:var(--rl);padding:24px;box-shadow:var(--shadow-card)}
+.pcard .stage{position:relative;width:100%;aspect-ratio:4/3;
+  background:#EFE9DB;border-radius:var(--r);overflow:hidden}
+.pcard .stage img,.pcard .stage .ph{position:absolute;inset:0;width:100%;height:100%}
+.pcard .stage img{object-fit:cover;z-index:2}
+.pcard .stage .ph{z-index:1;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);color:var(--ink3);letter-spacing:0.18em;font-weight:700;
+  text-transform:uppercase;font-size:22px}
+.pcard .cap{display:flex;align-items:center;gap:14px;padding:20px 6px 4px}
+.pcard .cap-i{width:38px;height:38px;border-radius:8px;background:var(--bg2);
+  display:flex;align-items:center;justify-content:center;color:var(--ink3)}
+.pcard .cap-i svg{width:18px;height:18px}
+.pcard .cap-t{font-size:14px;color:var(--ink3);font-weight:600}
+.pcard .cap-t strong{font-family:var(--mono);color:var(--ink);font-weight:700;letter-spacing:0.08em}
+
+.side{display:flex;flex-direction:column;gap:22px;padding-left:8px}
+.side h1{font-size:58px;line-height:1.04;font-weight:800;letter-spacing:-0.025em}
+.side h1 em{font-style:normal;color:var(--kik)}
+.side .lead{font-size:18px;line-height:1.55;color:var(--ink2);font-weight:500;max-width:580px}
+.side .btn{align-self:flex-start;padding:20px 32px;font-size:17px}
+
+.benefits{display:grid;grid-template-columns:repeat(3,1fr);
+  margin-top:14px;padding-top:24px;border-top:1px solid var(--line)}
+.bf{display:flex;align-items:flex-start;gap:14px;padding:4px 22px;
+  border-right:1px solid var(--line)}
+.bf:first-child{padding-left:0}
+.bf:last-child{padding-right:0;border-right:none}
+.bf-i{width:44px;height:44px;border-radius:50%;background:var(--bg2);
+  display:flex;align-items:center;justify-content:center;color:var(--kik);flex-shrink:0}
+.bf-i svg{width:20px;height:20px}
+.bf-t{display:flex;flex-direction:column;gap:3px;min-width:0}
+.bf-h{font-size:14px;font-weight:800;letter-spacing:-0.005em}
+.bf-d{font-size:12.5px;color:var(--ink3);line-height:1.4;font-weight:500}
+
+/* HOWRES */
+.howres{background:var(--paper);border:1px solid var(--line);
+  border-radius:var(--rl);padding:36px 44px;margin-top:48px;box-shadow:var(--shadow)}
+.howres h2{font-size:22px;font-weight:800;letter-spacing:-0.01em;margin-bottom:28px}
+.howres-track{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;
+  gap:24px;align-items:center}
+.hs{display:flex;align-items:center;gap:18px}
+.hs-n{width:38px;height:38px;border-radius:50%;background:var(--kik-soft);color:var(--kik);
+  display:flex;align-items:center;justify-content:center;font-family:var(--mono);
+  font-weight:800;font-size:14px;flex-shrink:0}
+.hs-i{width:48px;height:48px;border-radius:var(--rs);background:var(--bg2);
+  display:flex;align-items:center;justify-content:center;color:var(--kik);flex-shrink:0}
+.hs-i svg{width:24px;height:24px}
+.hs-t{display:flex;flex-direction:column;gap:5px;min-width:0}
+.hs-h{font-size:15px;font-weight:800}
+.hs-d{font-size:13px;color:var(--ink2);line-height:1.45;font-weight:500}
+.hs-line{width:80px;border-top:2px dashed var(--ink4);opacity:0.4}
+
+/* ANALYSIS */
+.an-card{margin-top:48px;background:var(--paper);border:1px solid var(--line);
+  border-radius:var(--rl);padding:56px;box-shadow:var(--shadow-card)}
+.an-card h2{font-size:30px;font-weight:800;letter-spacing:-0.015em;margin-top:14px}
+.an-card .sub{margin-top:10px;font-size:17px;color:var(--ink2)}
+.prg{position:relative;height:6px;background:var(--line2);border-radius:3px;
+  margin:28px 0 36px;overflow:hidden}
+.prg-f{position:absolute;left:0;top:0;bottom:0;width:0%;background:var(--kik);
+  transition:width .38s cubic-bezier(.4,.2,.2,1);border-radius:3px}
+.steps{display:flex;flex-direction:column}
+.steps li{display:flex;align-items:center;gap:18px;padding:14px 0;
+  border-bottom:1px solid var(--line2);color:var(--ink3);font-size:18px;font-weight:600;
+  transition:color .3s}
+.steps li:last-child{border-bottom:none}
+.ck{width:28px;height:28px;border-radius:50%;background:var(--paper);
+  border:2px solid var(--line);flex-shrink:0;position:relative;
+  display:flex;align-items:center;justify-content:center;transition:.3s}
+.steps li.active{color:var(--ink)}
+.steps li.active .ck{border-color:var(--kik);background:var(--kik-soft)}
+.steps li.active .ck::after{content:"";width:14px;height:14px;border-radius:50%;
+  border:2px solid var(--kik);border-top-color:transparent;animation:spin .7s linear infinite}
+.steps li.done{color:var(--ink)}
+.steps li.done .ck{background:var(--ok);border-color:var(--ok)}
+.steps li.done .ck::after{content:"";width:10px;height:6px;
+  border-left:2px solid #fff;border-bottom:2px solid #fff;
+  transform:rotate(-45deg) translate(1px,-1px)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.an-meta{margin-top:32px;font-family:var(--mono);font-size:12px;
+  color:var(--ink3);font-weight:700;letter-spacing:0.12em}
+
+/* RESULT · audit report */
+.rbar{padding:18px 56px;display:flex;align-items:center;justify-content:space-between;
+  gap:16px;background:var(--bg);border-bottom:1px solid var(--line);
+  position:sticky;top:78px;z-index:40}
+.rbar .back{display:inline-flex;align-items:center;gap:14px;background:none;
+  color:var(--ink);font-size:17px;font-weight:800;letter-spacing:-0.01em}
+.rbar .back svg{color:var(--ink2);transition:color .15s}
+.rbar .back:hover svg{color:var(--kik)}
+.rbar .photo-tag{padding:6px 16px;background:var(--paper);border:1px solid var(--line);
+  border-radius:8px;font-family:var(--mono);font-size:13px;font-weight:700;
+  color:var(--ink);letter-spacing:0.06em}
+
+.report{padding:28px 56px 56px}
+
+/* Single canvas — audit report */
+.canvas{
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:var(--rl);
+  box-shadow:var(--shadow-card);
+  overflow:hidden;
+}
+
+/* TOP: photo | verdict */
+.cnv-top{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  align-items:stretch;
+  border-bottom:1px solid var(--line);
+}
+.cnv-photo{
+  position:relative;
+  background:var(--dark);
+  min-height:560px;
+  border-right:1px solid var(--line);
+}
+.cnv-photo img,.cnv-photo .ph{position:absolute;inset:0;width:100%;height:100%}
+.cnv-photo img{object-fit:cover;z-index:1}
+.cnv-photo .ph{z-index:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);color:#3D3835;letter-spacing:0.18em;font-weight:700;
+  text-transform:uppercase;font-size:22px}
+.pp-bar{position:absolute;left:0;right:0;bottom:0;z-index:4;
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:18px 24px;
+  background:linear-gradient(to top,rgba(0,0,0,0.88),rgba(0,0,0,0.5) 60%,transparent);
+  color:#fff;font-size:14px;font-weight:600}
+.pp-bar strong{font-family:var(--mono);font-weight:700;letter-spacing:0.08em}
+.pp-bar .ok-ind{display:inline-flex;align-items:center;gap:8px;color:#9CDCB1;font-weight:700}
+.pp-bar .ok-ind::before{content:"";width:8px;height:8px;border-radius:50%;background:#27AE60}
+
+.cnv-verdict{
+  padding:40px 44px;
+  display:flex;flex-direction:column;gap:22px;
+}
+.cnv-verdict .eb{font-size:12px;font-weight:800;letter-spacing:0.18em;
+  text-transform:uppercase;color:var(--kik)}
+.cnv-verdict h2{font-size:50px;line-height:1.02;font-weight:800;
+  letter-spacing:-0.025em;margin-top:-4px}
+.cnv-verdict .x{font-size:17px;line-height:1.55;color:var(--ink2);font-weight:500}
+
+.reco{background:var(--kik);color:#fff;border-radius:var(--r);padding:22px 26px;
+  display:flex;align-items:center;gap:22px;box-shadow:0 8px 28px rgba(178,42,42,0.28)}
+.reco-i{width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.16);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff}
+.reco-i svg{width:28px;height:28px}
+.reco-b{display:flex;flex-direction:column;gap:6px}
+.reco-l{font-size:11px;font-weight:800;letter-spacing:0.18em;
+  text-transform:uppercase;color:var(--kik-soft)}
+.reco-t{font-size:19px;line-height:1.3;font-weight:700}
+
+/* state scale — Норма · Требует корректировки · Критично */
+.state-bar{
+  display:grid;grid-template-columns:1fr 1fr 1fr;
+  background:var(--bg2);border:1px solid var(--line);
+  border-radius:var(--rs);overflow:hidden;
+}
+.sg{padding:14px 16px;display:flex;align-items:center;gap:10px;
+  font-size:13px;font-weight:700;color:var(--ink3);
+  border-right:1px solid var(--line);letter-spacing:-0.005em}
+.sg:last-child{border-right:none}
+.sg-dot{width:10px;height:10px;border-radius:50%;background:var(--ink4);flex-shrink:0}
+.sg.ok .sg-dot{background:var(--ok)}
+.sg.bd .sg-dot{background:var(--kik)}
+.sg.active{background:#D5491F;color:#fff;border-right-color:#B8410F}
+.sg.active + .sg{border-left:1px solid #B8410F;margin-left:-1px}
+.sg.active .sg-dot{background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,0.32)}
+
+/* SUMMARY STRIP */
+.cnv-summary{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  border-bottom:1px solid var(--line);
+}
+.cnv-summary .cell{
+  padding:26px 36px;
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;gap:8px;
+}
+.cnv-summary .cell:last-child{border-right:none}
+.cnv-summary .k{font-size:11px;font-weight:800;letter-spacing:0.14em;
+  text-transform:uppercase;color:var(--ink3)}
+.cnv-summary .v{font-size:34px;font-weight:800;letter-spacing:-0.02em;line-height:1}
+.cnv-summary .v.kik{color:var(--kik)}
+.cnv-summary .v.state-v{font-size:20px;line-height:1.2;color:#D5491F;letter-spacing:-0.005em}
+
+/* BOTTOM · Tasks | Design */
+.cnv-bottom{
+  display:grid;
+  grid-template-columns:1.15fr 1fr;
+  align-items:stretch;
+}
+.cnv-tasks{padding:32px 40px;border-right:1px solid var(--line)}
+.cnv-design{padding:32px 40px}
+.cnv-tasks h3,.cnv-design h3{
+  font-size:20px;font-weight:800;letter-spacing:-0.01em;margin-bottom:18px;
+  display:flex;align-items:center;gap:10px;
+}
+.cnv-tasks h3::before,.cnv-design h3::before{
+  content:"";width:14px;height:2px;background:var(--kik);
+}
+
+.tlist{columns:2;column-gap:32px;counter-reset:t}
+.tlist li{position:relative;padding:13px 0 13px 38px;
+  border-bottom:1px dashed var(--line);
+  font-size:14.5px;line-height:1.42;color:var(--ink);font-weight:500;
+  counter-increment:t;break-inside:avoid}
+.tlist li::before{content:counter(t);position:absolute;left:0;top:10px;
+  width:24px;height:24px;border-radius:50%;background:var(--kik-soft);color:var(--kik);
+  font-family:var(--mono);font-size:12px;font-weight:800;
+  display:flex;align-items:center;justify-content:center}
+
+.rlist li{display:grid;grid-template-columns:32px 1fr auto;align-items:center;gap:14px;
+  padding:14px 0;border-bottom:1px solid var(--line2);font-size:15px}
+.rlist li:last-child{border-bottom:none}
+.rlist .ri{width:32px;height:32px;border-radius:8px;background:var(--bg2);
+  display:flex;align-items:center;justify-content:center;color:var(--ink3)}
+.rlist .ri svg{width:16px;height:16px}
+.rlist .k{color:var(--ink2);font-weight:600}
+.rlist .v{font-weight:700;white-space:nowrap}
+.rlist .v.no{color:var(--kik)}
+.rlist .v.wr{color:var(--warn)}
+.rlist .v.ok{color:var(--ok)}
+
+@media (max-width:1280px){
+  .hero{grid-template-columns:1fr;gap:36px}
+  .side h1{font-size:46px}
+  .cnv-top{grid-template-columns:1fr}
+  .cnv-photo{border-right:none;border-bottom:1px solid var(--line);
+    min-height:auto;aspect-ratio:5/4}
+  .cnv-bottom{grid-template-columns:1fr}
+  .cnv-tasks{border-right:none;border-bottom:1px solid var(--line)}
+  .howres-track{grid-template-columns:1fr;gap:8px}
+  .hs-line{width:0;height:24px;border-top:none;
+    border-left:2px dashed var(--ink4);margin-left:18px}
+}
+@media (max-width:900px){
+  .hdr{padding:0 24px;height:64px}
+  .shell{padding:24px 24px 56px}
+  .rbar{padding:14px 24px;top:64px}
+  .report{padding:24px}
+  .side h1{font-size:36px}
+  .cnv-verdict{padding:28px 24px}
+  .cnv-verdict h2{font-size:36px}
+  .cnv-summary .cell{padding:20px 22px}
+  .cnv-summary .v{font-size:26px}
+  .cnv-tasks,.cnv-design{padding:24px 22px}
+  .benefits{grid-template-columns:1fr}
+  .bf{border-right:none;border-bottom:1px solid var(--line);padding:14px 0}
+  .bf:last-child{border-bottom:none}
+  .howres{padding:24px 22px}
+  .an-card{padding:32px 24px}
+  .tlist{columns:1}
+  .brand-x,.brand-s{display:none}
+  .reco{padding:18px 20px;gap:16px}
+  .reco-t{font-size:16px}
+}
+@media (max-width:580px){
+  .side h1{font-size:30px}
+  .cnv-verdict h2{font-size:28px}
+  .side .btn{align-self:stretch;justify-content:center}
+  .cnv-summary{grid-template-columns:1fr}
+  .cnv-summary .cell{border-right:none;border-bottom:1px solid var(--line)}
+  .cnv-summary .cell:last-child{border-bottom:none}
+  .rbar .back{font-size:14px}
+}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="brand">
+    <span class="brand-m">К</span>
+    <span class="brand-n">Коровка из Кореновки</span>
+    <span class="brand-s"></span>
+    <span class="brand-x">Фото-контроль</span>
+  </div>
+  <span class="tag">
+    <span class="ib" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="9" cy="9" r="2"/>
+        <path d="m21 15-5-5L5 21"/>
+      </svg>
+    </span>
+    Demo · <strong>photo_006</strong>
+  </span>
+</header>
+
+<!-- START -->
+<section class="screen screen-start" data-active>
+<div class="shell">
+  <div class="hero">
+    <figure class="pcard">
+      <div class="stage">
+        <img src="assets/demo/photo_006.jpg" alt="Демо-фото photo_006" onerror="this.remove()">
+        <div class="ph">photo_006</div>
+      </div>
+      <figcaption class="cap">
+        <span class="cap-i" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <circle cx="9" cy="9" r="2"/>
+            <path d="m21 15-5-5L5 21"/>
+          </svg>
+        </span>
+        <span class="cap-t">Демо-фото <strong>photo_006</strong></span>
+      </figcaption>
+    </figure>
+
+    <aside class="side">
+      <span class="eyebrow">Проверка точки по фото</span>
+      <h1>Проверка представленности <em>КИК</em> по фото</h1>
+      <p class="lead">Получите быстрый разбор фото торговой точки: оценка представленности КИК, выявление проблем выкладки и конкретные задачи для торгового представителя.</p>
+
+      <button class="btn" type="button" data-action="analyze">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"/>
+          <path d="m20 20-3.5-3.5"/>
+        </svg>
+        Разобрать фото
+      </button>
+
+      <div class="benefits">
+        <div class="bf">
+          <span class="bf-i" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+              <path d="M3 6h18"/>
+              <path d="M16 10a4 4 0 0 1-8 0"/>
+            </svg>
+          </span>
+          <div class="bf-t">
+            <span class="bf-h">SKU и доля КИК</span>
+            <span class="bf-d">Проверка ассортимента и доли бренда</span>
+          </div>
+        </div>
+        <div class="bf">
+          <span class="bf-i" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 6 2 18 2 18 9"/>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+              <rect x="6" y="14" width="12" height="8" rx="1"/>
+            </svg>
+          </span>
+          <div class="bf-t">
+            <span class="bf-h">Оформление и POSM</span>
+            <span class="bf-d">Проверка выкладки, POSM и ценников</span>
+          </div>
+        </div>
+        <div class="bf">
+          <span class="bf-i" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2"/>
+              <path d="M16 2v4"/><path d="M8 2v4"/>
+              <path d="m9 14 2 2 4-4"/>
+            </svg>
+          </span>
+          <div class="bf-t">
+            <span class="bf-h">Задачи для ТП</span>
+            <span class="bf-d">Конкретные действия для улучшения результата</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="howres" aria-label="Как выглядит разбор">
+    <h2>Как выглядит разбор</h2>
+    <div class="howres-track">
+      <div class="hs">
+        <span class="hs-n">1</span>
+        <span class="hs-i" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <circle cx="9" cy="9" r="2"/>
+            <path d="m21 15-5-5L5 21"/>
+          </svg>
+        </span>
+        <div class="hs-t">
+          <span class="hs-h">Фото точки</span>
+          <p class="hs-d">Загруженное фото торговой точки становится основой для анализа.</p>
+        </div>
+      </div>
+      <div class="hs-line"></div>
+      <div class="hs">
+        <span class="hs-n">2</span>
+        <span class="hs-i" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </span>
+        <div class="hs-t">
+          <span class="hs-h">Проблемы выкладки</span>
+          <p class="hs-d">Система оценивает представленность КИК и отмечает проблемы по ключевым параметрам.</p>
+        </div>
+      </div>
+      <div class="hs-line"></div>
+      <div class="hs">
+        <span class="hs-n">3</span>
+        <span class="hs-i" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 11 11 13 15 9"/>
+            <path d="M9 17h7"/>
+            <rect x="3" y="4" width="18" height="18" rx="2"/>
+            <path d="M16 2v4"/><path d="M8 2v4"/>
+          </svg>
+        </span>
+        <div class="hs-t">
+          <span class="hs-h">Задачи для ТП</span>
+          <p class="hs-d">Вы получаете конкретные задачи для улучшения выкладки и роста продаж.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+</section>
+
+<!-- ANALYSIS -->
+<section class="screen screen-analysis" hidden>
+<div class="shell narrow">
+  <div class="an-card">
+    <span class="eyebrow">Анализ выполняется</span>
+    <h2>Разбираем фото торговой точки</h2>
+    <p class="sub">Это займёт пару секунд.</p>
+    <div class="prg"><div class="prg-f" id="pf"></div></div>
+    <ul class="steps" id="sl">
+      <li><span class="ck"></span><span>Проверяем наличие КИК</span></li>
+      <li><span class="ck"></span><span>Оцениваем долю бренда</span></li>
+      <li><span class="ck"></span><span>Проверяем оформление и POSM</span></li>
+      <li><span class="ck"></span><span>Формируем задачи для ТП</span></li>
+    </ul>
+    <div class="an-meta">демо-фото photo_006</div>
+  </div>
+</div>
+</section>
+
+<!-- RESULT · audit report -->
+<section class="screen screen-result" hidden>
+
+<div class="rbar">
+  <button class="back" id="bk" type="button">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M19 12H5M11 6l-6 6 6 6"/>
+    </svg>
+    Проверка представленности КИК
+  </button>
+  <span class="photo-tag">photo_006</span>
+</div>
+
+<div class="report">
+  <div class="canvas">
+
+    <!-- TOP: photo | verdict -->
+    <div class="cnv-top">
+      <div class="cnv-photo">
+        <img src="assets/demo/photo_006.jpg" alt="Демо-фото photo_006" onerror="this.remove()">
+        <div class="ph">photo_006</div>
+        <div class="pp-bar">
+          <span>Демо-фото <strong>photo_006</strong></span>
+          <span class="ok-ind">Фото пригодно для разбора</span>
+        </div>
+      </div>
+
+      <div class="cnv-verdict">
+        <span class="eb">Вердикт</span>
+        <h2>Скорректировать выкладку</h2>
+
+        <div class="state-bar" role="img" aria-label="Состояние: требует корректировки">
+          <div class="sg ok"><span class="sg-dot"></span>Норма</div>
+          <div class="sg active"><span class="sg-dot"></span>Требует корректировки</div>
+          <div class="sg bd"><span class="sg-dot"></span>Критично</div>
+        </div>
+
+        <p class="x">КИК найден, но выкладку нужно скорректировать: товары смешаны с конкурентами, POSM не найден, единый брендовый блок не сформирован.</p>
+
+        <div class="reco">
+          <span class="reco-i" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="6"/>
+              <circle cx="12" cy="12" r="2"/>
+            </svg>
+          </span>
+          <div class="reco-b">
+            <span class="reco-l">Рекомендация</span>
+            <span class="reco-t">Собрать КИК в единый брендовый блок, развести с конкурентами, проверить POSM и довести долю до 40%+.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SUMMARY STRIP -->
+    <div class="cnv-summary">
+      <div class="cell"><span class="k">SKU КИК</span><span class="v">4</span></div>
+      <div class="cell"><span class="k">Доля КИК</span><span class="v kik">30–35%</span></div>
+      <div class="cell"><span class="k">Состояние</span><span class="v state-v">Требует корректировки</span></div>
+    </div>
+
+    <!-- BOTTOM: tasks | design -->
+    <div class="cnv-bottom">
+      <div class="cnv-tasks">
+        <h3>Задачи для ТП</h3>
+        <ol class="tlist">
+          <li>Собрать SKU КИК рядом в единый брендовый блок.</li>
+          <li>Увеличить долю КИК до 40%+.</li>
+          <li>Развести КИК и конкурентов по зонам.</li>
+          <li>Проверить наличие POSM.</li>
+          <li>Проверить бирку «Молоко».</li>
+          <li>Поправить ценники, чтобы они читались.</li>
+          <li>Сделать повторное фото после корректировки.</li>
+        </ol>
+      </div>
+
+      <div class="cnv-design">
+        <h3>Оформление точки</h3>
+        <ul class="rlist">
+          <li>
+            <span class="ri" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+            </span>
+            <span class="k">POSM</span><span class="v no">не найден</span>
+          </li>
+          <li>
+            <span class="ri" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                <line x1="7" y1="7" x2="7.01" y2="7"/>
+              </svg>
+            </span>
+            <span class="k">Бирка «Молоко»</span><span class="v no">отсутствует</span>
+          </li>
+          <li>
+            <span class="ri" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="1" x2="12" y2="23"/>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              </svg>
+            </span>
+            <span class="k">Ценники</span><span class="v wr">частично видны</span>
+          </li>
+          <li>
+            <span class="ri" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </span>
+            <span class="k">Помехи на ларе</span><span class="v ok">не обнаружены</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+</section>
+
+<script>
+(function(){
+  const sc = {
+    start:    document.querySelector('.screen-start'),
+    analysis: document.querySelector('.screen-analysis'),
+    result:   document.querySelector('.screen-result')
+  };
+  const pf = document.getElementById('pf');
+  const sl = document.getElementById('sl');
+  function show(n){
+    Object.entries(sc).forEach(([k,el])=>{
+      if(k===n){ el.removeAttribute('hidden'); el.setAttribute('data-active',''); }
+      else { el.setAttribute('hidden',''); el.removeAttribute('data-active'); }
+    });
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  async function run(){
+    const st = sl.querySelectorAll('li');
+    st.forEach(s => s.classList.remove('active','done'));
+    pf.style.width = '0%';
+    await sleep(160);
+    const N = st.length;
+    for (let i = 0; i < N; i++){
+      st[i].classList.add('active');
+      pf.style.width = ((i + 0.55) / N * 100).toFixed(1) + '%';
+      await sleep(420);
+      st[i].classList.remove('active');
+      st[i].classList.add('done');
+      pf.style.width = ((i + 1) / N * 100).toFixed(1) + '%';
+      await sleep(80);
+    }
+    await sleep(200);
+    show('result');
+  }
+  document.querySelector('[data-action="analyze"]').onclick = () => { show('analysis'); run(); };
+  document.getElementById('bk').onclick = () => show('start');
+})();
+</script>
+
+</body>
+</html>
